@@ -181,20 +181,20 @@ Weeks 11-12 (final presentation): full end-to-end demo with all tools functional
 
 ## References
 
-[^1]: [Missing authors], "RFC_DIYAssist_Agentic_RAG_for_Appliance_Trouble,", n.d..
+[^1]:  "RFC_DIYAssist_Agentic_RAG_for_Appliance_Trouble,", n.d..
 
-[^2]: [Missing authors], "MyFixit Dataset - GitHub,", n.d.. Available: [https://github.com/rub-ksv/MyFixit-Dataset](https://github.com/rub-ksv/MyFixit-Dataset)
+[^2]:  "MyFixit Dataset - GitHub,", n.d.. Available: [https://github.com/rub-ksv/MyFixit-Dataset](https://github.com/rub-ksv/MyFixit-Dataset)
 
-[^3]: [Missing authors], "iFixit API v2.0 Documentation,", n.d.. Available: [https://www.ifixit.com/api/2.0/doc/Guides](https://www.ifixit.com/api/2.0/doc/Guides)
+[^3]: "iFixit API v2.0 Documentation,", n.d.. Available: [https://www.ifixit.com/api/2.0/doc/Guides](https://www.ifixit.com/api/2.0/doc/Guides)
 
-[^4]: [Missing authors], "spare-part-replacement-notes-v1 on HuggingFace,", n.d.. Available: [https://huggingface.co/datasets/deepakkumar07/spare-part-replacement-notes-v1/viewer/](https://huggingface.co/datasets/deepakkumar07/spare-part-replacement-notes-v1/viewer/)
+[^4]:  "spare-part-replacement-notes-v1 on HuggingFace,", n.d.. Available: [https://huggingface.co/datasets/deepakkumar07/spare-part-replacement-notes-v1/viewer/](https://huggingface.co/datasets/deepakkumar07/spare-part-replacement-notes-v1/viewer/)
 
-[^5]: [Missing authors], "maintenance_gpt_added on HuggingFace,", n.d.. Available: [https://huggingface.co/datasets/mandarchaudharii/maintenance_gpt_added/viewer](https://huggingface.co/datasets/mandarchaudharii/maintenance_gpt_added/viewer)
+[^5]:  "maintenance_gpt_added on HuggingFace,", n.d.. Available: [https://huggingface.co/datasets/mandarchaudharii/maintenance_gpt_added/viewer](https://huggingface.co/datasets/mandarchaudharii/maintenance_gpt_added/viewer)
 
-[^6]: [Missing authors], "Fine-Tuning a 3B Model for Function Calling with QLoRA,", n.d.. Available: [https://datahacker.rs/llm_log-015-fine-tuning-llms-teach-a-3b-model-to-call-functions-with-qlora-unsloth-on-free-colab-t4/](https://datahacker.rs/llm_log-015-fine-tuning-llms-teach-a-3b-model-to-call-functions-with-qlora-unsloth-on-free-colab-t4/)
+[^6]:  "Fine-Tuning a 3B Model for Function Calling with QLoRA,", n.d.. Available: [https://datahacker.rs/llm_log-015-fine-tuning-llms-teach-a-3b-model-to-call-functions-with-qlora-unsloth-on-free-colab-t4/](https://datahacker.rs/llm_log-015-fine-tuning-llms-teach-a-3b-model-to-call-functions-with-qlora-unsloth-on-free-colab-t4/)
 
-[^7]: [Missing authors], "Fine-Tune Any LLM for Free on Colab T4,", n.d.. Available: [https://docs.bswen.com/blog/2026-03-21-free-llm-finetuning-colab](https://docs.bswen.com/blog/2026-03-21-free-llm-finetuning-colab)
+[^7]: "Fine-Tune Any LLM for Free on Colab T4,", n.d.. Available: [https://docs.bswen.com/blog/2026-03-21-free-llm-finetuning-colab](https://docs.bswen.com/blog/2026-03-21-free-llm-finetuning-colab)
 
-[^8]: [Missing authors], "DPO vs RLHF Hardware Requirements,", n.d.. Available: [https://agentfactory.panaversity.org/docs/Turing-LLMOps-Proprietary-Intelligence/alignment-safety/dpo-vs-rlhf](https://agentfactory.panaversity.org/docs/Turing-LLMOps-Proprietary-Intelligence/alignment-safety/dpo-vs-rlhf)
+[^8]: "DPO vs RLHF Hardware Requirements,", n.d.. Available: [https://agentfactory.panaversity.org/docs/Turing-LLMOps-Proprietary-Intelligence/alignment-safety/dpo-vs-rlhf](https://agentfactory.panaversity.org/docs/Turing-LLMOps-Proprietary-Intelligence/alignment-safety/dpo-vs-rlhf)
 
-[^9]: [Missing authors], "RLHF vs DPO vs PPO Comparison,", n.d.. Available: [https://mljourney.com/rlhf-vs-dpo-vs-ppo-how-to-align-llms-without-losing-your-mind/](https://mljourney.com/rlhf-vs-dpo-vs-ppo-how-to-align-llms-without-losing-your-mind/)
+[^9]: "RLHF vs DPO vs PPO Comparison,", n.d.. Available: [https://mljourney.com/rlhf-vs-dpo-vs-ppo-how-to-align-llms-without-losing-your-mind/](https://mljourney.com/rlhf-vs-dpo-vs-ppo-how-to-align-llms-without-losing-your-mind/)
