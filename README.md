@@ -1,6 +1,6 @@
 # DIY-Assist: Agentic RAG for Appliance Troubleshooting
 
-## Architecture Plan (Week 5-6 Presentation)
+## Architecture Plan 
 
 ## 1. Project Overview
 
