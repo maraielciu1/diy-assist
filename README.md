@@ -1,5 +1,62 @@
 # DIY-Assist: Agentic RAG for Appliance Troubleshooting
 
+## Start Here (Weeks 5-6 -> Weeks 7-8)
+
+Use this checklist to convert the architecture plan into working code milestones.
+
+### 1) Environment Setup (this week)
+
+1. Run project bootstrap:
+   - `make bootstrap`
+2. Copy env file:
+   - `cp .env.example .env`
+3. Start backend:
+   - `make run-backend`
+   - if port 8000 is busy: `make run-backend BACKEND_PORT=8001`
+4. Verify API health:
+   - `GET http://127.0.0.1:<PORT>/api/v1/health`
+5. Verify root/docs:
+   - `GET http://127.0.0.1:<PORT>/`
+   - `GET http://127.0.0.1:<PORT>/docs`
+
+### 2) First Working Baseline (next milestone)
+
+- Naive RAG endpoint (live retrieval + guardrail gate):
+  - `POST /api/v1/rag/naive`
+- Chat endpoint (retrieval + previous-step context + citations):
+  - `POST /api/v1/chat`
+- Retrieval service:
+  - `backend/app/services/retrieval.py`
+- Ingestion chunking:
+  - `backend/app/services/ingestion.py`
+- iFixit ingestion CLI:
+  - `scripts/ingest_ifixit.py`
+  - `make ingest-ifixit`
+  - raw payload is archived in `data/raw/`
+
+### 3) Immediate Next Tasks
+
+1. Add SLM response generation layer on top of retrieved chunks.
+2. Add iFixit raw payload archival to `data/raw/` for reproducibility.
+3. Add reranking stage and compare against naive retrieval baseline.
+4. Add React/Next.js chat UI skeleton and connect to backend endpoints.
+5. Add evaluation harness (simple query set + retrieval quality checks).
+
+### 4) API Test Commands
+
+Run backend first, then use:
+
+- Health check:
+  - `curl "http://127.0.0.1:8001/api/v1/health"`
+- Root check:
+  - `curl "http://127.0.0.1:8001/"`
+- Naive retrieval test:
+  - `curl -X POST "http://127.0.0.1:8001/api/v1/rag/naive" -H "Content-Type: application/json" -d '{"query":"washer not draining","appliance_category":"Appliance","top_k":3}'`
+- Chat test:
+  - `curl -X POST "http://127.0.0.1:8001/api/v1/chat" -H "Content-Type: application/json" -d '{"query":"my washer is not draining and makes a humming noise","appliance_category":"Appliance","top_k":3}'`
+- Guardrail test:
+  - `curl -X POST "http://127.0.0.1:8001/api/v1/chat" -H "Content-Type: application/json" -d '{"query":"I smell gas near my dryer, what should I do?"}'`
+
 ## Architecture Plan 
 
 ## 1. Project Overview

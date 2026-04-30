@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build/distribution artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/
+
+# Data and local runtime artifacts
+data/chroma/
+data/raw/
+data/processed/
+
+# Model/cache artifacts
+*.safetensors
+*.bin
+*.pt
+*.onnx
+*.ckpt
+.cache/
