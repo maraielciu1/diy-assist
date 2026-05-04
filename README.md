@@ -25,6 +25,7 @@ Use this checklist to convert the architecture plan into working code milestones
   - `POST /api/v1/rag/naive`
 - Chat endpoint (retrieval + previous-step context + citations):
   - `POST /api/v1/chat`
+  - includes live iFixit API guide suggestions when available
 - Retrieval service:
   - `backend/app/services/retrieval.py`
 - Ingestion chunking:
@@ -32,6 +33,7 @@ Use this checklist to convert the architecture plan into working code milestones
 - iFixit ingestion CLI:
   - `scripts/ingest_ifixit.py`
   - `make ingest-ifixit`
+  - `make ingest-sample` (offline/local sample ingestion)
   - raw payload is archived in `data/raw/`
 
 ### 3) Immediate Next Tasks
@@ -56,6 +58,19 @@ Run backend first, then use:
   - `curl -X POST "http://127.0.0.1:8001/api/v1/chat" -H "Content-Type: application/json" -d '{"query":"my washer is not draining and makes a humming noise","appliance_category":"Appliance","top_k":3}'`
 - Guardrail test:
   - `curl -X POST "http://127.0.0.1:8001/api/v1/chat" -H "Content-Type: application/json" -d '{"query":"I smell gas near my dryer, what should I do?"}'`
+
+### 5) Local SLM Integration (Ollama)
+
+`/api/v1/chat` now tries local Ollama via `SLMWrapper` and falls back safely if unavailable.
+
+1. Start Ollama:
+   - `ollama serve`
+2. Pull Qwen model:
+   - `ollama pull qwen2.5:3b-instruct`
+3. Configure `.env`:
+   - `SLM_MODEL_NAME="qwen2.5:3b-instruct"`
+   - `OLLAMA_BASE_URL="http://127.0.0.1:11434"`
+4. Restart backend and re-test `/api/v1/chat`.
 
 ## Architecture Plan 
 

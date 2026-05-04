@@ -2,7 +2,7 @@ PYTHON ?= python3
 BACKEND_HOST ?= 127.0.0.1
 BACKEND_PORT ?= 8000
 
-.PHONY: bootstrap run-backend test ingest-ifixit
+.PHONY: bootstrap run-backend test ingest-ifixit ingest-sample ingest-ifixit-appliance
 
 bootstrap:
 	./scripts/bootstrap.sh
@@ -15,3 +15,9 @@ test:
 
 ingest-ifixit:
 	. .venv/bin/activate && python scripts/ingest_ifixit.py --limit 25
+
+ingest-sample:
+	. .venv/bin/activate && python scripts/ingest_ifixit.py --input-json data/raw/sample_ifixit_minimal.json
+
+ingest-ifixit-appliance:
+	. .venv/bin/activate && python scripts/ingest_ifixit.py --limit 50 --category Appliance

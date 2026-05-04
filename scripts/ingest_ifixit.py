@@ -8,6 +8,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import typing
+import typing_extensions
+
+if not hasattr(typing_extensions, "TypeAlias"):
+    typing_extensions.TypeAlias = typing.TypeAlias
+
 import chromadb
 import httpx
 
@@ -17,6 +23,10 @@ sys.path.append(str(ROOT / "backend"))
 from app.core.config import settings  # noqa: E402
 from app.services.embeddings import build_embedder  # noqa: E402
 from app.services.ingestion import chunk_ifixit_steps  # noqa: E402
+
+
+def _ifixit_timeout_seconds() -> int:
+    return int(getattr(settings, "ifixit_timeout_seconds", 30))
 
 
 def _extract_guides(payload: Any) -> list[dict[str, Any]]:
@@ -38,13 +48,27 @@ def _extract_step_texts(guide: dict[str, Any]) -> list[str]:
         if isinstance(step, str):
             text = step.strip()
         elif isinstance(step, dict):
-            text = (
+            base = (
                 step.get("text")
-                or step.get("title")
                 or step.get("summary")
                 or step.get("description")
                 or ""
-            ).strip()
+            )
+            if not base and isinstance(step.get("lines"), list):
+                line_parts: list[str] = []
+                for line in step["lines"]:
+                    if isinstance(line, dict):
+                        candidate = (
+                            line.get("text_raw")
+                            or line.get("text_rendered")
+                            or line.get("text")
+                            or ""
+                        ).strip()
+                        if candidate:
+                            line_parts.append(candidate)
+                base = " ".join(line_parts)
+            title = str(step.get("title") or "").strip()
+            text = f"{title}. {base}".strip(". ").strip()
         else:
             text = ""
         if text:
@@ -54,20 +78,22 @@ def _extract_step_texts(guide: dict[str, Any]) -> list[str]:
 
 def _fetch_guide_detail(client: httpx.Client, guide_id: str) -> dict[str, Any]:
     url = f"{settings.ifixit_api_base_url}/guides/{guide_id}"
-    response = client.get(url, timeout=30)
+    response = client.get(url, timeout=_ifixit_timeout_seconds())
     response.raise_for_status()
     data = response.json()
     return data if isinstance(data, dict) else {}
 
 
-def _fetch_guides_from_api(limit: int, category: str | None) -> list[dict[str, Any]]:
+def _fetch_guides_from_api(limit: int, category: str | None, query: str | None) -> list[dict[str, Any]]:
     params: dict[str, Any] = {"limit": limit}
     if category:
         params["category"] = category
+    if query:
+        params["q"] = query
 
     url = f"{settings.ifixit_api_base_url}/guides"
-    with httpx.Client() as client:
-        response = client.get(url, params=params, timeout=30)
+    with httpx.Client(timeout=_ifixit_timeout_seconds()) as client:
+        response = client.get(url, params=params)
         response.raise_for_status()
         guides = _extract_guides(response.json())
 
@@ -156,6 +182,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest iFixit guides into ChromaDB.")
     parser.add_argument("--limit", type=int, default=25, help="Number of guides to ingest.")
     parser.add_argument("--category", type=str, default=None, help="Optional category filter.")
+    parser.add_argument("--query", type=str, default=None, help="Optional query keyword.")
     parser.add_argument(
         "--input-json",
         type=str,
@@ -169,11 +196,15 @@ def main() -> None:
         guides = _extract_guides(payload)
         source = "input"
     else:
-        guides = _fetch_guides_from_api(limit=args.limit, category=args.category)
-        source = "api"
+        try:
+            guides = _fetch_guides_from_api(limit=args.limit, category=args.category, query=args.query)
+            source = "api"
+        except Exception as exc:
+            print(f"iFixit fetch failed: {exc}")
+            print("Tip: use --input-json data/raw/sample_ifixit_minimal.json for local/offline testing.")
+            raise
 
     raw_path = _save_raw_payload(guides, source=source)
-
     indexed_guides, total_chunks = _upsert_guides(guides)
     print(
         f"Ingestion complete. guides_indexed={indexed_guides}, "

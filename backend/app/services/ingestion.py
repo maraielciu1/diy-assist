@@ -13,7 +13,6 @@ class ChunkRecord:
 def chunk_ifixit_steps(steps: list[str], max_chars: int = 1800) -> list[str]:
     """
     Lightweight first-pass chunker for step text.
-    Weeks 7-8: replace with token-aware chunking and overlap.
     """
     chunks: list[str] = []
     buffer = ""

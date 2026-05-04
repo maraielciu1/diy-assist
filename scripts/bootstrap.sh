@@ -2,12 +2,19 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VENV_DIR="${ROOT_DIR}/.venv"
 
-python3 -m venv "${ROOT_DIR}/.venv"
-source "${ROOT_DIR}/.venv/bin/activate"
+echo "Creating virtual environment at ${VENV_DIR}"
+python3 -m venv "${VENV_DIR}"
+
+echo "Activating virtual environment"
+source "${VENV_DIR}/bin/activate"
+
+echo "Upgrading pip"
 python -m pip install --upgrade pip
+
+echo "Installing backend requirements"
 python -m pip install -r "${ROOT_DIR}/backend/requirements.txt"
 
 echo "Bootstrap complete."
-echo "Activate with: source .venv/bin/activate"
-echo "Run backend: uvicorn app.main:app --reload --app-dir backend"
+echo "Activate env: source .venv/bin/activate"

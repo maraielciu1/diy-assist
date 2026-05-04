@@ -6,3 +6,4 @@ sentence-transformers
 python-dotenv
 httpx
 pytest
+typing_extensions
