@@ -26,13 +26,18 @@ class NaiveRetriever:
         self,
         query: str,
         appliance_category: str | None = None,
+        appliance_type: str | None = None,
+        brand: str | None = None,
+        model: str | None = None,
         top_k: int = 5,
     ) -> list[RetrievedChunk]:
         query_embedding = self.embedding_model.encode([query])[0]
-
-        where: dict[str, Any] | None = None
-        if appliance_category:
-            where = {"appliance_category": appliance_category}
+        where = self._build_where_clause(
+            appliance_category=appliance_category,
+            appliance_type=appliance_type,
+            brand=brand,
+            model=model,
+        )
 
         raw = self.collection.query(
             query_embeddings=[query_embedding],
@@ -61,6 +66,29 @@ class NaiveRetriever:
                 )
             )
         return results
+
+    @staticmethod
+    def _build_where_clause(
+        appliance_category: str | None = None,
+        appliance_type: str | None = None,
+        brand: str | None = None,
+        model: str | None = None,
+    ) -> dict[str, Any] | None:
+        filters: list[dict[str, Any]] = []
+        if appliance_category:
+            filters.append({"appliance_category": {"$eq": appliance_category}})
+        if appliance_type:
+            filters.append({"appliance_type": {"$eq": appliance_type}})
+        if brand:
+            filters.append({"brand": {"$eq": brand}})
+        if model:
+            filters.append({"model": {"$eq": model}})
+
+        if not filters:
+            return None
+        if len(filters) == 1:
+            return filters[0]
+        return {"$and": filters}
 
     @staticmethod
     def _normalize_score(distance: float) -> float:

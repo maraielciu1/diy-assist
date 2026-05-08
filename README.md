@@ -58,6 +58,25 @@ Current tests cover:
 - Chat success, hazard blocking, and retriever-unavailable fallback
 - Ingestion from a local sample payload
 
+## Stage 2 Retrieval Schema
+
+`POST /api/v1/rag/naive` and `POST /api/v1/chat` accept:
+
+- `query` (required)
+- `appliance_category` (optional)
+- `brand` (optional)
+- `model` (optional)
+- `top_k` (optional)
+
+Chunk metadata fields are standardized as:
+
+- `guide_id`, `guide_title`, `appliance_category`, `brand`, `model`
+- `difficulty`, `tools`, `step_number`, `chunk_number`
+- `source_url`, `guide_text`
+
+RAG results include top-level `score`, `guide_title`, `step_number`, `previous_steps`, and full `metadata`.
+Chat citations include `guide_title`, `step_number`, `score`, `previous_steps`, and full `metadata`.
+
 ## Architecture Plan 
 
 ## 1. Project Overview

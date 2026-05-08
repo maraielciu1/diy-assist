@@ -20,4 +20,4 @@ def test_sample_ingestion_json_exists_and_extracts_guides() -> None:
 
     steps = ingest_ifixit._extract_step_texts(guides[0])
     assert steps
-    assert any("Step 1:" in step for step in steps)
+    assert any("Step 1:" in step.get("text", "") for step in steps)

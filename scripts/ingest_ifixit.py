@@ -22,7 +22,7 @@ sys.path.append(str(ROOT / "backend"))
 
 from app.core.config import settings  # noqa: E402
 from app.services.embeddings import build_embedder  # noqa: E402
-from app.services.ingestion import chunk_ifixit_steps  # noqa: E402
+from app.services.ingestion import chunk_step_text  # noqa: E402
 
 
 def _ifixit_timeout_seconds() -> int:
@@ -41,12 +41,33 @@ def _extract_guides(payload: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _extract_step_texts(guide: dict[str, Any]) -> list[str]:
+def _extract_tools(guide: dict[str, Any]) -> list[str]:
+    raw_tools = guide.get("tools")
+    if isinstance(raw_tools, list):
+        out: list[str] = []
+        for tool in raw_tools:
+            if isinstance(tool, str) and tool.strip():
+                out.append(tool.strip())
+            elif isinstance(tool, dict):
+                name = str(
+                    tool.get("name")
+                    or tool.get("title")
+                    or tool.get("text")
+                    or ""
+                ).strip()
+                if name:
+                    out.append(name)
+        return out
+    return []
+
+
+def _extract_step_texts(guide: dict[str, Any]) -> list[dict[str, Any]]:
     steps = guide.get("steps", [])
-    out: list[str] = []
+    out: list[dict[str, Any]] = []
     for idx, step in enumerate(steps, start=1):
         if isinstance(step, str):
             text = step.strip()
+            step_tools: list[str] = []
         elif isinstance(step, dict):
             base = (
                 step.get("text")
@@ -69,11 +90,99 @@ def _extract_step_texts(guide: dict[str, Any]) -> list[str]:
                 base = " ".join(line_parts)
             title = str(step.get("title") or "").strip()
             text = f"{title}. {base}".strip(". ").strip()
+            step_tools = []
+            if isinstance(step.get("tools"), list):
+                for tool in step["tools"]:
+                    if isinstance(tool, str) and tool.strip():
+                        step_tools.append(tool.strip())
+                    elif isinstance(tool, dict):
+                        name = str(tool.get("name") or tool.get("title") or "").strip()
+                        if name:
+                            step_tools.append(name)
         else:
             text = ""
+            step_tools = []
         if text:
-            out.append(f"Step {idx}: {text}")
+            out.append(
+                {
+                    "step_number": idx,
+                    "text": f"Step {idx}: {text}",
+                    "tools": step_tools,
+                }
+            )
     return out
+
+
+def _extract_guide_text(guide: dict[str, Any]) -> str:
+    for key in ("summary", "introduction", "description", "text", "guide_text"):
+        value = guide.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _extract_brand_and_model(guide: dict[str, Any]) -> tuple[str, str]:
+    brand = str(guide.get("brand") or "").strip()
+    model = str(guide.get("model") or "").strip()
+
+    subject = guide.get("subject")
+    if isinstance(subject, dict):
+        if not brand:
+            brand = str(subject.get("brand") or subject.get("manufacturer") or "").strip()
+        if not model:
+            model = str(subject.get("model") or subject.get("model_number") or "").strip()
+    return brand or "unknown", model or "unknown"
+
+
+def _extract_difficulty(guide: dict[str, Any]) -> str:
+    difficulty = guide.get("difficulty")
+    if isinstance(difficulty, dict):
+        return str(difficulty.get("title") or difficulty.get("value") or "unknown")
+    if isinstance(difficulty, str) and difficulty.strip():
+        return difficulty.strip()
+    return "unknown"
+
+
+def _infer_appliance_type(guide_title: str, guide_text: str) -> str:
+    haystack = f"{guide_title} {guide_text}".lower()
+    mapping = {
+        "washer": "washer",
+        "washing machine": "washer",
+        "dryer": "dryer",
+        "dishwasher": "dishwasher",
+        "refrigerator": "refrigerator",
+        "fridge": "refrigerator",
+        "oven": "oven",
+        "microwave": "microwave",
+    }
+    for keyword, appliance_type in mapping.items():
+        if keyword in haystack:
+            return appliance_type
+    return "unknown"
+
+
+def _normalized_guide_record(guide: dict[str, Any], index_hint: int) -> dict[str, Any]:
+    brand, model = _extract_brand_and_model(guide)
+    category = str(guide.get("category") or guide.get("type") or "unknown").strip() or "unknown"
+    tools = _extract_tools(guide)
+    steps = _extract_step_texts(guide)
+    guide_title = str(guide.get("title") or "Untitled Guide")
+    guide_text = _extract_guide_text(guide)
+    appliance_type = _infer_appliance_type(guide_title=guide_title, guide_text=guide_text)
+
+    return {
+        "guide_id": str(guide.get("guideid") or guide.get("id") or f"guide-{index_hint}"),
+        "guide_title": guide_title,
+        "appliance_category": category,
+        "appliance_type": appliance_type,
+        "brand": brand,
+        "model": model,
+        "difficulty": _extract_difficulty(guide),
+        "tools": tools,
+        "source_url": str(guide.get("url") or guide.get("public_url") or ""),
+        "guide_text": guide_text,
+        "steps": steps,
+    }
 
 
 def _fetch_guide_detail(client: httpx.Client, guide_id: str) -> dict[str, Any]:
@@ -133,24 +242,34 @@ def _upsert_guides(guides: list[dict[str, Any]]) -> tuple[int, int]:
     total_chunks = 0
     indexed_guides = 0
 
-    for guide in guides:
-        step_texts = _extract_step_texts(guide)
-        if not step_texts:
+    for idx, guide in enumerate(guides, start=1):
+        normalized = _normalized_guide_record(guide, index_hint=idx)
+        steps = normalized["steps"]
+        if not steps:
             continue
 
-        guide_id = str(guide.get("guideid") or guide.get("id") or f"guide-{indexed_guides}")
-        guide_title = str(guide.get("title") or "Untitled Guide")
-        appliance_category = str(guide.get("category") or "unknown")
-        source_url = str(guide.get("url") or guide.get("public_url") or "")
-        brand = str(guide.get("brand") or "unknown")
-        model = str(guide.get("model") or "unknown")
+        guide_id = normalized["guide_id"]
+        guide_title = normalized["guide_title"]
+        appliance_category = normalized["appliance_category"]
+        source_url = normalized["source_url"]
+        brand = normalized["brand"]
+        model = normalized["model"]
+        appliance_type = normalized["appliance_type"]
+        difficulty = normalized["difficulty"]
+        tools = normalized["tools"]
+        guide_text = normalized["guide_text"]
 
         ids: list[str] = []
         docs: list[str] = []
         metas: list[dict[str, Any]] = []
 
-        for step_idx, step_text in enumerate(step_texts, start=1):
-            chunks = chunk_ifixit_steps([step_text])
+        for step in steps:
+            step_idx = int(step.get("step_number", 0))
+            step_text = str(step.get("text") or "")
+            if not step_text.strip():
+                continue
+            combined_tools = sorted(set(tools + step.get("tools", [])))
+            chunks = chunk_step_text(step_text)
             for chunk_idx, chunk_text in enumerate(chunks, start=1):
                 chunk_id = f"{guide_id}-s{step_idx}-c{chunk_idx}"
                 ids.append(chunk_id)
@@ -160,8 +279,12 @@ def _upsert_guides(guides: list[dict[str, Any]]) -> tuple[int, int]:
                         "guide_id": guide_id,
                         "guide_title": guide_title,
                         "appliance_category": appliance_category,
+                        "appliance_type": appliance_type,
                         "brand": brand,
                         "model": model,
+                        "difficulty": difficulty,
+                        "tools": ", ".join(combined_tools),
+                        "guide_text": guide_text,
                         "step_number": step_idx,
                         "chunk_number": chunk_idx,
                         "source_url": source_url,

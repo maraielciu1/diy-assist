@@ -5,6 +5,8 @@ const topkEl = document.getElementById("topk");
 const answerEl = document.getElementById("answer");
 const citationsEl = document.getElementById("citations");
 const liveGuidesEl = document.getElementById("liveGuides");
+const requestMetaEl = document.getElementById("requestMeta");
+const retrievalDebugEl = document.getElementById("retrievalDebug");
 
 function renderCitations(citations) {
   if (!citations || citations.length === 0) {
@@ -37,19 +39,59 @@ function renderLiveGuides(guides) {
   liveGuidesEl.appendChild(ul);
 }
 
+function renderRetrievalDebug(results) {
+  if (!results || results.length === 0) {
+    retrievalDebugEl.textContent = "No retrieved chunks.";
+    return;
+  }
+  retrievalDebugEl.innerHTML = "";
+  const ul = document.createElement("ul");
+  results.forEach((item, idx) => {
+    const li = document.createElement("li");
+    const text = String(item.text || "").slice(0, 220);
+    li.textContent = `#${idx + 1} ${item.guide_title || "Unknown guide"} step ${
+      item.step_number || "?"
+    }, score=${Number(item.score || 0).toFixed(3)} :: ${text}${
+      text.length >= 220 ? "..." : ""
+    }`;
+    ul.appendChild(li);
+  });
+  retrievalDebugEl.appendChild(ul);
+}
+
+async function fetchNaiveDebug(body) {
+  const response = await fetch("/api/v1/rag/naive", {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(`Naive RAG failed (${response.status})`);
+  }
+  return data;
+}
+
 async function sendChat() {
   sendBtn.disabled = true;
   answerEl.textContent = "Thinking...";
+  const requestId = `req-${Date.now()}`;
 
   const body = {
     query: queryEl.value.trim(),
     appliance_category: categoryEl.value.trim() || null,
     top_k: Number(topkEl.value || 3),
   };
+  requestMetaEl.textContent = `${requestId} | query="${body.query}" | category="${body.appliance_category}" | top_k=${body.top_k}`;
 
   try {
+    const ragData = await fetchNaiveDebug(body);
+    renderRetrievalDebug(ragData.results || []);
+
     const response = await fetch("/api/v1/chat", {
       method: "POST",
+      cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
@@ -82,6 +124,7 @@ async function sendChat() {
     answerEl.textContent = `Error calling backend: ${err.message}`;
     renderCitations([]);
     renderLiveGuides([]);
+    renderRetrievalDebug([]);
   } finally {
     sendBtn.disabled = false;
   }

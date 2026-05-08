@@ -13,7 +13,15 @@ class _FakeChunk:
 
 
 class _FakeRetriever:
-    def search(self, query: str, appliance_category: str | None = None, top_k: int = 5):
+    def search(
+        self,
+        query: str,
+        appliance_category: str | None = None,
+        appliance_type: str | None = None,
+        brand: str | None = None,
+        model: str | None = None,
+        top_k: int = 5,
+    ):
         return [
             _FakeChunk(
                 text="Step 2: Clean the washer drain pump filter.",
@@ -32,7 +40,15 @@ class _FakeRetriever:
 
 
 class _BrokenRetriever:
-    def search(self, query: str, appliance_category: str | None = None, top_k: int = 5):
+    def search(
+        self,
+        query: str,
+        appliance_category: str | None = None,
+        appliance_type: str | None = None,
+        brand: str | None = None,
+        model: str | None = None,
+        top_k: int = 5,
+    ):
         raise RuntimeError("chroma unavailable")
 
 
