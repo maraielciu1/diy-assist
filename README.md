@@ -37,7 +37,25 @@ curl http://127.0.0.1:8000/api/v1/health
 curl -X POST http://127.0.0.1:8000/api/v1/rag/naive \
   -H "Content-Type: application/json" \
   -d '{"query":"washer not draining","appliance_category":"Appliance","top_k":3}'
+curl -X POST http://127.0.0.1:8000/api/v1/rag/reranked \
+  -H "Content-Type: application/json" \
+  -d '{"query":"washer not draining","appliance_category":"Appliance","top_k":3}'
+curl -X POST http://127.0.0.1:8000/api/v1/rag/hyde \
+  -H "Content-Type: application/json" \
+  -d '{"query":"washer not draining","appliance_category":"Appliance","top_k":3}'
+curl -X POST http://127.0.0.1:8000/api/v1/rag/hyde_reranked \
+  -H "Content-Type: application/json" \
+  -d '{"query":"washer not draining","appliance_category":"Appliance","top_k":3}'
 curl -X POST http://127.0.0.1:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"query":"my washer is not draining and makes a humming noise","appliance_category":"Appliance","top_k":3}'
+curl -X POST http://127.0.0.1:8000/api/v1/chat/reranked \
+  -H "Content-Type: application/json" \
+  -d '{"query":"my washer is not draining and makes a humming noise","appliance_category":"Appliance","top_k":3}'
+curl -X POST http://127.0.0.1:8000/api/v1/chat/hyde \
+  -H "Content-Type: application/json" \
+  -d '{"query":"my washer is not draining and makes a humming noise","appliance_category":"Appliance","top_k":3}'
+curl -X POST http://127.0.0.1:8000/api/v1/chat/hyde_reranked \
   -H "Content-Type: application/json" \
   -d '{"query":"my washer is not draining and makes a humming noise","appliance_category":"Appliance","top_k":3}'
 curl -X POST http://127.0.0.1:8000/api/v1/chat \
@@ -76,6 +94,22 @@ Chunk metadata fields are standardized as:
 
 RAG results include top-level `score`, `guide_title`, `step_number`, `previous_steps`, and full `metadata`.
 Chat citations include `guide_title`, `step_number`, `score`, `previous_steps`, and full `metadata`.
+
+## Stage 3 Retrieval Strategies
+
+Simple endpoint-based strategy selection (baseline remains available):
+
+- `POST /api/v1/rag/naive`: dense retrieval (baseline)
+- `POST /api/v1/rag/reranked`: dense retrieval → CrossEncoder reranking
+- `POST /api/v1/rag/hyde`: HyDE (hypothetical answer embedding) → dense retrieval
+- `POST /api/v1/rag/hyde_reranked`: HyDE → dense candidates → CrossEncoder reranking
+
+Chat endpoints mirror retrieval strategy:
+
+- `POST /api/v1/chat` (naive baseline)
+- `POST /api/v1/chat/reranked`
+- `POST /api/v1/chat/hyde`
+- `POST /api/v1/chat/hyde_reranked`
 
 ## Architecture Plan 
 

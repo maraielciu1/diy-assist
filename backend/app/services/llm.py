@@ -54,6 +54,21 @@ class SLMWrapper:
             "Safety: disconnect power and water/gas supply (if applicable) before inspection."
         )
 
+    def generate_hypothetical_answer(self, user_query: str) -> str:
+        """
+        HyDE helper: produce a short hypothetical answer for retrieval.
+
+        If the local SLM is unavailable, fall back to the original user query.
+        """
+        prompt = (
+            "Write a short, plausible troubleshooting answer (4-6 bullet points) to the user issue.\n"
+            "Do NOT mention sources. Do NOT ask questions. Keep it general and safe.\n\n"
+            f"User issue: {user_query}\n"
+        )
+        text = self._generate(prompt)
+        cleaned = (text or "").strip()
+        return cleaned or user_query
+
     def _generate(self, prompt: str) -> str | None:
         if _provider() == "lmstudio":
             return self._generate_with_lmstudio(prompt)

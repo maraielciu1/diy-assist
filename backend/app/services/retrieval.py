@@ -29,9 +29,11 @@ class NaiveRetriever:
         appliance_type: str | None = None,
         brand: str | None = None,
         model: str | None = None,
+        query_embedding: list[float] | None = None,
         top_k: int = 5,
     ) -> list[RetrievedChunk]:
-        query_embedding = self.embedding_model.encode([query])[0]
+        if query_embedding is None:
+            query_embedding = self.embedding_model.encode([query])[0]
         where = self._build_where_clause(
             appliance_category=appliance_category,
             appliance_type=appliance_type,
@@ -132,3 +134,80 @@ class NaiveRetriever:
             return stitched[-settings.previous_steps_window :]
         except Exception:
             return []
+
+
+class CrossEncoderReranker:
+    """
+    Rerank retrieved chunks using a CrossEncoder.
+
+    Uses `cross-encoder/ms-marco-MiniLM-L-6-v2` by default (configurable),
+    but is loaded lazily so tests and environments without HF cache can still run.
+    """
+
+    def __init__(self, model_name: str | None = None) -> None:
+        self.model_name = model_name or getattr(
+            settings, "rerank_model_name", "cross-encoder/ms-marco-MiniLM-L-6-v2"
+        )
+        self._model = None
+
+    def _get_model(self):
+        if self._model is None:
+            from sentence_transformers import CrossEncoder
+
+            self._model = CrossEncoder(self.model_name)
+        return self._model
+
+    def rerank(self, query: str, candidates: list[RetrievedChunk], top_k: int) -> list[RetrievedChunk]:
+        if not candidates:
+            return []
+
+        model = self._get_model()
+        pairs = [(query, c.text) for c in candidates]
+        scores = model.predict(pairs)
+
+        enriched: list[RetrievedChunk] = []
+        for cand, score in zip(candidates, scores):
+            meta = dict(cand.metadata or {})
+            meta["rerank_score"] = float(score)
+            meta["baseline_score"] = float(cand.score)
+            enriched.append(RetrievedChunk(text=cand.text, score=float(score), metadata=meta))
+
+        enriched.sort(key=lambda c: float(c.score), reverse=True)
+        return enriched[: max(top_k, 0)]
+
+
+class RerankedRetriever:
+    """
+    Two-stage retrieval:
+    1) Dense retrieval (Chroma) to get a larger candidate set.
+    2) CrossEncoder reranking to choose final top-k.
+    """
+
+    def __init__(
+        self,
+        base: NaiveRetriever | None = None,
+        reranker: CrossEncoderReranker | None = None,
+        candidate_k: int | None = None,
+    ) -> None:
+        self.base = base or NaiveRetriever()
+        self.reranker = reranker or CrossEncoderReranker()
+        self.candidate_k = int(candidate_k or getattr(settings, "rerank_candidate_k", 20))
+
+    def search(
+        self,
+        query: str,
+        appliance_category: str | None = None,
+        appliance_type: str | None = None,
+        brand: str | None = None,
+        model: str | None = None,
+        top_k: int = 5,
+    ) -> list[RetrievedChunk]:
+        candidates = self.base.search(
+            query=query,
+            appliance_category=appliance_category,
+            appliance_type=appliance_type,
+            brand=brand,
+            model=model,
+            top_k=max(self.candidate_k, top_k),
+        )
+        return self.reranker.rerank(query=query, candidates=candidates, top_k=top_k)

@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     embed_model_name: str = "BAAI/bge-small-en-v1.5"
     top_k_default: int = 5
     previous_steps_window: int = 2
+    rerank_model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    rerank_candidate_k: int = 20
+    hyde_enabled: bool = True
     ifixit_api_base_url: str = "https://www.ifixit.com/api/2.0"
     guardrails_enabled: bool = True
     raw_data_dir: str = "./data/raw"
