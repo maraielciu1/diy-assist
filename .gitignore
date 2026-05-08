@@ -32,7 +32,9 @@ dist/
 
 # Data and local runtime artifacts
 data/chroma/
-data/raw/
+data/raw/*
+!data/raw/
+!data/raw/sample_ifixit_minimal.json
 data/processed/
 
 # Model/cache artifacts

@@ -2,7 +2,11 @@ PYTHON ?= python3
 BACKEND_HOST ?= 127.0.0.1
 BACKEND_PORT ?= 8000
 
-.PHONY: bootstrap run-backend test ingest-ifixit ingest-sample ingest-ifixit-appliance
+.PHONY: setup backend bootstrap run-backend test ingest-ifixit ingest-sample ingest-ifixit-appliance
+
+setup: bootstrap
+
+backend: run-backend
 
 bootstrap:
 	./scripts/bootstrap.sh

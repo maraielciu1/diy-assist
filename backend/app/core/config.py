@@ -13,9 +13,13 @@ class Settings(BaseSettings):
     guardrails_enabled: bool = True
     raw_data_dir: str = "./data/raw"
     slm_model_name: str = "qwen2.5-3b"
+    slm_provider: str = "ollama"
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_timeout_seconds: int = 60
+    lmstudio_base_url: str = "http://127.0.0.1:1234/v1"
+    ifixit_timeout_seconds: int = 30
     use_ifixit_live_lookup: bool = True
+    frontend_dir: str = "./frontend"
 
     model_config = SettingsConfigDict(
         env_file=".env",

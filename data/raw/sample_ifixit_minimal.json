@@ -1,0 +1,26 @@
+{
+  "guides": [
+    {
+      "guideid": "washer-001",
+      "title": "Washer Not Draining Troubleshooting",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Washer-Not-Draining-Troubleshooting/washer-001",
+      "brand": "Whirlpool",
+      "model": "WFW5605MC",
+      "steps": [
+        {
+          "title": "Check for drain hose kinks",
+          "text": "Unplug the washer. Inspect the drain hose behind the unit and remove any sharp bends that restrict water flow."
+        },
+        {
+          "title": "Clean the drain pump filter",
+          "text": "Open the access panel, place a towel and shallow tray, then unscrew and clean the drain pump filter of lint and debris."
+        },
+        {
+          "title": "Test the drain pump",
+          "text": "Reconnect power and run a drain cycle. If you hear humming without water movement, the pump impeller may be blocked or failing."
+        }
+      ]
+    }
+  ]
+}
