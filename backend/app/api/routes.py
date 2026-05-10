@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.services.guardrails import evaluate_query_safety
 from app.services.ifixit_live import IFixitLiveClient
 from app.services.llm import SLMWrapper
+from app.services.agent.orchestrator import ChatTurnInput, run_agent_chat
 from app.services.retrieval import NaiveRetriever, RerankedRetriever
 from app.services.hyde import HyDERetriever, HyDERerankedRetriever
 
@@ -91,6 +92,10 @@ class ChatQuery(BaseModel):
     brand: str | None = None
     model: str | None = None
     top_k: int = Field(default=settings.top_k_default, ge=1, le=20)
+    # Stage 4: session + agent / legacy
+    session_id: str | None = None
+    use_legacy_chat: bool = False
+    retrieval_strategy: str | None = None
 
 
 @router.get("/health")
@@ -313,8 +318,31 @@ def hyde_reranked_rag(payload: RAGQuery) -> dict:
     }
 
 
-@router.post("/chat")
-def chat(payload: ChatQuery) -> dict:
+def _retrieve_by_strategy(strategy: str):
+    def fn(**kwargs):
+        if strategy == "reranked":
+            return _get_reranked_retriever().search(**kwargs)
+        if strategy == "hyde":
+            return _get_hyde_retriever().search(**kwargs)
+        if strategy == "hyde_reranked":
+            return _get_hyde_reranked_retriever().search(**kwargs)
+        return _get_retriever().search(**kwargs)
+
+    return fn
+
+
+def _live_ifixit_lookup(query: str, appliance_category: str | None = None) -> list:
+    if not settings.use_ifixit_live_lookup:
+        return []
+    return ifixit_live_client.suggest_guides(
+        query=query,
+        appliance_category=appliance_category,
+        limit=3,
+    )
+
+
+def _chat_legacy(payload: ChatQuery) -> dict:
+    """Direct RAG + SLM without agent orchestration (Stage 1–3 compatibility)."""
     if settings.guardrails_enabled:
         decision = evaluate_query_safety(payload.query)
         if not decision.allow:
@@ -393,6 +421,68 @@ def chat(payload: ChatQuery) -> dict:
         "slm_provider": _provider_name(),
         "retrieval_count": len(retrieved),
     }
+
+
+@router.post("/chat")
+def chat(payload: ChatQuery) -> dict:
+    if payload.use_legacy_chat:
+        return _chat_legacy(payload)
+
+    strat = (payload.retrieval_strategy or settings.chat_retrieval_strategy).lower()
+    if strat not in {"naive", "reranked", "hyde", "hyde_reranked"}:
+        strat = "naive"
+
+    appliance_type = _resolve_appliance_type(
+        explicit=payload.appliance_type,
+        query=payload.query,
+    )
+    retrieve_fn = _retrieve_by_strategy(strat)
+
+    def retrieve_with_filters(**kwargs) -> list:
+        at = kwargs.get("appliance_type") or appliance_type
+        return retrieve_fn(
+            query=kwargs["query"],
+            appliance_category=kwargs.get("appliance_category"),
+            appliance_type=at,
+            brand=kwargs.get("brand"),
+            model=kwargs.get("model"),
+            top_k=kwargs.get("top_k"),
+        )
+
+    turn = ChatTurnInput(
+        query=payload.query,
+        appliance_category=payload.appliance_category,
+        appliance_type=appliance_type,
+        brand=payload.brand,
+        model=payload.model,
+        top_k=payload.top_k,
+        session_id=payload.session_id,
+        strategy_label=strat,
+    )
+    try:
+        return run_agent_chat(
+            turn,
+            retrieve_fn=retrieve_with_filters,
+            slm_generate=slm.generate_answer,
+            live_ifixit_fn=_live_ifixit_lookup,
+            provider_name=_provider_name(),
+        )
+    except Exception as exc:
+        return {
+            "query": payload.query,
+            "answer": None,
+            "citations": [],
+            "live_ifixit_guides": [],
+            "live_ifixit_used": False,
+            "slm_provider": _provider_name(),
+            "retrieval_count": 0,
+            "agent_mode": True,
+            "error": (
+                "Retriever is unavailable. If Chroma is corrupted, clear `data/chroma/` "
+                "and re-run ingestion."
+            ),
+            "details": str(exc),
+        }
 
 
 def _chat_from_hits(payload: ChatQuery, hits, strategy: str) -> dict:

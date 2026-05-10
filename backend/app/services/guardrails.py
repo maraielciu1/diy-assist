@@ -11,17 +11,26 @@ class GuardrailDecision:
 HAZARD_KEYWORDS = {
     "gas leak",
     "smell gas",
+    "smells like gas",
     "burning smell",
     "smells burnt",
     "burnt smell",
     "burning rubber",
+    "electrical burning",
     "sparking",
+    "sparks when",
+    "arcing",
     "exposed wire",
+    "frayed wire",
     "electrocution",
     "electric shock",
     "got shocked",
+    "high voltage",
+    "main breaker",
     "refrigerant leak",
+    "freon leak",
     "smoke from appliance",
+    "smoke coming from",
 }
 
 

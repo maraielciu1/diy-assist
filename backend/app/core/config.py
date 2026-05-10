@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     ifixit_timeout_seconds: int = 30
     use_ifixit_live_lookup: bool = True
     frontend_dir: str = "./frontend"
+    # Stage 4: SQLite chat persistence + default retrieval strategy for agent chat
+    chat_db_path: str = "./data/chat.sqlite"
+    chat_retrieval_strategy: str = "naive"
 
     model_config = SettingsConfigDict(
         env_file=".env",

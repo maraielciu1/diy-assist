@@ -106,10 +106,22 @@ Simple endpoint-based strategy selection (baseline remains available):
 
 Chat endpoints mirror retrieval strategy:
 
-- `POST /api/v1/chat` (naive baseline)
+- `POST /api/v1/chat`: Stage 4 agent orchestration by default (see below). Retrieval strategy is controlled by `CHAT_RETRIEVAL_STRATEGY` / `retrieval_strategy` (`naive`, `reranked`, `hyde`, `hyde_reranked`). Set `use_legacy_chat: true` for the pre-agent direct RAG + SLM behavior.
 - `POST /api/v1/chat/reranked`
 - `POST /api/v1/chat/hyde`
 - `POST /api/v1/chat/hyde_reranked`
+
+### Stage 3 verification
+
+Stage 3 is implemented and tested: reranked + HyDE routes, `scripts/compare_strategies.py`, `eval/benchmark_stage3.json`, and `backend/tests/test_stage3_strategies.py`. Default chat retrieval strategy is documented via `CHAT_RETRIEVAL_STRATEGY` (default `naive`).
+
+## Stage 4 Agent + SQLite persistence
+
+- **Tools** (typed I/O in `backend/app/services/agent/`): `Manual_Search_Tool`, `Safety_Protocol_Checker`, `Part_Identifier`, `Symptom_Clarifier`, `Step_By_Step_Guide_Formatter`.
+- **Orchestration**: safety first → optional clarification for ambiguous symptoms → retrieval → parts hints → formatted steps → SLM answer.
+- **Persistence**: SQLite at `CHAT_DB_PATH` (default `./data/chat.sqlite`); responses include `session_id` for follow-up turns.
+- **Structured payload**: responses include `structured` (`answer_summary`, `clarifying_question`, `likely_issue`, `steps`, `parts_list`, `retrieved_guide_snippets`, `tool_trace`) plus legacy `answer` and `citations`.
+- **Compatibility**: send `"use_legacy_chat": true` on `POST /api/v1/chat` to use the Stage 1–3 direct RAG path only.
 
 ## Architecture Plan 
 
