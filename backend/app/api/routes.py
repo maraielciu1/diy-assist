@@ -6,6 +6,7 @@ from app.services.guardrails import evaluate_query_safety
 from app.services.ifixit_live import IFixitLiveClient
 from app.services.llm import SLMWrapper
 from app.services.agent.orchestrator import ChatTurnInput, run_agent_chat
+from app.services.agent.react_orchestrator import run_react_agent_chat
 from app.services.retrieval import NaiveRetriever, RerankedRetriever
 from app.services.hyde import HyDERetriever, HyDERerankedRetriever
 
@@ -31,7 +32,7 @@ APPLIANCE_TYPE_HINTS = {
 
 
 def _provider_name() -> str:
-    return str(getattr(settings, "slm_provider", "unknown"))
+    return "lmstudio"
 
 
 def _get_retriever() -> NaiveRetriever:
@@ -43,22 +44,36 @@ def _get_retriever() -> NaiveRetriever:
 
 def _get_reranked_retriever() -> RerankedRetriever:
     global _reranked_retriever
-    if _reranked_retriever is None:
-        _reranked_retriever = RerankedRetriever(base=_get_retriever())
+    if _reranked_retriever is not None and not hasattr(_reranked_retriever, "base"):
+        return _reranked_retriever
+    base = _get_retriever()
+    if _reranked_retriever is None or getattr(_reranked_retriever, "base", None) is not base:
+        _reranked_retriever = RerankedRetriever(base=base)
     return _reranked_retriever
 
 
 def _get_hyde_retriever() -> HyDERetriever:
     global _hyde_retriever
-    if _hyde_retriever is None:
-        _hyde_retriever = HyDERetriever(base=_get_retriever(), slm=slm)
+    if _hyde_retriever is not None and not hasattr(_hyde_retriever, "base"):
+        return _hyde_retriever
+    base = _get_retriever()
+    if _hyde_retriever is None or getattr(_hyde_retriever, "base", None) is not base:
+        _hyde_retriever = HyDERetriever(base=base, slm=slm)
     return _hyde_retriever
 
 
 def _get_hyde_reranked_retriever() -> HyDERerankedRetriever:
     global _hyde_reranked_retriever
-    if _hyde_reranked_retriever is None:
-        _hyde_reranked_retriever = HyDERerankedRetriever(base=_get_retriever(), slm=slm)
+    if _hyde_reranked_retriever is not None and not hasattr(
+        _hyde_reranked_retriever, "base"
+    ):
+        return _hyde_reranked_retriever
+    base = _get_retriever()
+    if (
+        _hyde_reranked_retriever is None
+        or getattr(_hyde_reranked_retriever, "base", None) is not base
+    ):
+        _hyde_reranked_retriever = HyDERerankedRetriever(base=base, slm=slm)
     return _hyde_reranked_retriever
 
 
@@ -96,6 +111,8 @@ class ChatQuery(BaseModel):
     session_id: str | None = None
     use_legacy_chat: bool = False
     retrieval_strategy: str | None = None
+    agent_mode: str = "react"
+    slm_model_name: str | None = None
 
 
 @router.get("/health")
@@ -442,7 +459,7 @@ def chat(payload: ChatQuery) -> dict:
         at = kwargs.get("appliance_type") or appliance_type
         return retrieve_fn(
             query=kwargs["query"],
-            appliance_category=kwargs.get("appliance_category"),
+            appliance_category=None if at else kwargs.get("appliance_category"),
             appliance_type=at,
             brand=kwargs.get("brand"),
             model=kwargs.get("model"),
@@ -460,12 +477,20 @@ def chat(payload: ChatQuery) -> dict:
         strategy_label=strat,
     )
     try:
-        return run_agent_chat(
+        if payload.agent_mode == "pipeline":
+            return run_agent_chat(
+                turn,
+                retrieve_fn=retrieve_with_filters,
+                slm_generate=slm.generate_answer,
+                live_ifixit_fn=_live_ifixit_lookup,
+                provider_name=_provider_name(),
+            )
+        return run_react_agent_chat(
             turn,
             retrieve_fn=retrieve_with_filters,
-            slm_generate=slm.generate_answer,
+            slm=slm,
             live_ifixit_fn=_live_ifixit_lookup,
-            provider_name=_provider_name(),
+            slm_model_name=payload.slm_model_name,
         )
     except Exception as exc:
         return {

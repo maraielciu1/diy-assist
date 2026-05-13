@@ -1,4 +1,10 @@
+from pathlib import Path
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
@@ -15,23 +21,35 @@ class Settings(BaseSettings):
     ifixit_api_base_url: str = "https://www.ifixit.com/api/2.0"
     guardrails_enabled: bool = True
     raw_data_dir: str = "./data/raw"
-    slm_model_name: str = "qwen2.5-3b"
-    slm_provider: str = "ollama"
-    ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_timeout_seconds: int = 60
+    slm_model_name: str = "qwen2.5-3b-instruct-mlx"
     lmstudio_base_url: str = "http://127.0.0.1:1234/v1"
+    lmstudio_timeout_seconds: int = 180
     ifixit_timeout_seconds: int = 30
-    use_ifixit_live_lookup: bool = True
+    use_ifixit_live_lookup: bool = False
+    retrieval_min_score: float = 0.45
     frontend_dir: str = "./frontend"
+    cors_allow_origins: list[str] = [
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+    ]
     # Stage 4: SQLite chat persistence + default retrieval strategy for agent chat
     chat_db_path: str = "./data/chat.sqlite"
-    chat_retrieval_strategy: str = "naive"
+    chat_retrieval_strategy: str = "reranked"
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def resolve_project_paths(self) -> "Settings":
+        for field_name in ("chroma_path", "raw_data_dir", "frontend_dir", "chat_db_path"):
+            raw_value = getattr(self, field_name)
+            path = Path(raw_value).expanduser()
+            if not path.is_absolute():
+                setattr(self, field_name, str((PROJECT_ROOT / path).resolve()))
+        return self
 
 
 settings = Settings()

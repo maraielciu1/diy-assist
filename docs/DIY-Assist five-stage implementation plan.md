@@ -2,7 +2,7 @@
 
 ## Purpose
 
-DIY-Assist is currently a functional prototype, not yet the full system described in the README architecture. The repository already contains a FastAPI backend, static frontend, naive ChromaDB retrieval, iFixit ingestion, local SLM generation through Ollama or LM Studio, keyword-based safety guardrails, and a minimal health test. [^1] [^2] [^3] [^4] [^5] [^6]​
+DIY-Assist is currently a functional prototype, not yet the full system described in the README architecture. The repository already contains a FastAPI backend, static frontend, naive ChromaDB retrieval, iFixit ingestion, local SLM generation through LM Studio, keyword-based safety guardrails, and a minimal health test. [^1] [^2] [^3] [^4] [^5] [^6]​
 
 The README requires a more complete agentic RAG application: React/Next.js frontend, richer ingestion and chunking, reranked RAG, HyDE, metadata-filtered retrieval, ReAct-style tool orchestration, fine-tuning, DPO safety alignment, and an evaluation framework. [^7] [^7] [^7] [^7] [^7] [^7] [^8] [^7]​
 
@@ -18,7 +18,7 @@ The retriever uses ChromaDB, BGE-small-en-v1.5 embeddings, optional appliance-ca
 
 The iFixit ingestion script can fetch guides, fetch guide details, save raw payloads to `data/raw`, chunk steps, generate embeddings, and upsert documents with metadata into ChromaDB. [^11] This means the README item about raw iFixit archival is already implemented, even though it is still listed as an immediate next task. [^7]​
 
-The chat system already has an SLM response layer through `SLMWrapper`, which builds a grounded prompt from retrieved chunks and live iFixit candidates, then calls Ollama or LM Studio with a safe fallback. [^4] This means the README item about adding SLM response generation is also partially implemented. [^7]​
+The chat system already has an SLM response layer through `SLMWrapper`, which builds a grounded prompt from retrieved chunks and live iFixit candidates, then calls LM Studio with a safe fallback. [^4] This means the README item about adding SLM response generation is also partially implemented. [^7]​
 
 A minimal frontend exists, but it is static HTML and JavaScript rather than React/Next.js. [^12] [^13] The README requires a React/Next.js web application with chat history, appliance selection, and richer repair guidance rendering. [^7]​
 

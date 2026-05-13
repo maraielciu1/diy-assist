@@ -16,8 +16,9 @@ def test_sample_ingestion_json_exists_and_extracts_guides() -> None:
 
     payload = json.loads(sample_path.read_text(encoding="utf-8"))
     guides = ingest_ifixit._extract_guides(payload)
-    assert len(guides) >= 1
+    assert len(guides) >= 12
 
     steps = ingest_ifixit._extract_step_texts(guides[0])
     assert steps
-    assert any("Step 1:" in step.get("text", "") for step in steps)
+    assert steps[0]["step_number"] == 1
+    assert not steps[0].get("text", "").startswith("Step 1:")

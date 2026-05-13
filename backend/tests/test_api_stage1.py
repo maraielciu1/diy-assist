@@ -106,6 +106,7 @@ def test_chat_success(monkeypatch) -> None:
         json={
             "query": "my washer is not draining and makes a humming noise",
             "appliance_category": "Appliance",
+            "agent_mode": "pipeline",
             "top_k": 3,
         },
     )
@@ -120,7 +121,7 @@ def test_safety_blocking_chat() -> None:
     client = TestClient(app)
     response = client.post(
         "/api/v1/chat",
-        json={"query": "I smell gas near my dryer, what should I do?"},
+        json={"query": "I smell gas near my dryer, what should I do?", "agent_mode": "pipeline"},
     )
     assert response.status_code == 200
     payload = response.json()
@@ -136,7 +137,12 @@ def test_empty_or_unavailable_retriever(monkeypatch) -> None:
 
     rag_response = client.post(
         "/api/v1/rag/naive",
-        json={"query": "washer not draining", "appliance_category": "Appliance", "top_k": 3},
+        json={
+            "query": "washer not draining",
+            "appliance_category": "Appliance",
+            "agent_mode": "pipeline",
+            "top_k": 3,
+        },
     )
     assert rag_response.status_code == 200
     rag_payload = rag_response.json()

@@ -50,6 +50,7 @@ class PartCandidate(BaseModel):
 
 class PartIdentifyOutput(BaseModel):
     parts: list[PartCandidate]
+    tools_required: list[str] = Field(default_factory=list)
 
 
 # --- Symptom_Clarifier ---
@@ -87,5 +88,6 @@ class StructuredChatPayload(BaseModel):
     likely_issue: str | None = None
     steps: list[str] = Field(default_factory=list)
     parts_list: list[str] = Field(default_factory=list)
+    tools_required: list[str] = Field(default_factory=list)
     retrieved_guide_snippets: list[dict[str, Any]] = Field(default_factory=list)
     tool_trace: list[dict[str, Any]] = Field(default_factory=list)

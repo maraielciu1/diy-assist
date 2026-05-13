@@ -21,6 +21,9 @@ env/
 build/
 dist/
 *.egg-info/
+node_modules/
+.next/
+out/
 
 # Logs
 *.log
@@ -32,10 +35,14 @@ dist/
 
 # Data and local runtime artifacts
 data/chroma/
+data/chroma.bak/
+data/*.sqlite
+backend/data/*.sqlite
 data/raw/*
 !data/raw/
 !data/raw/sample_ifixit_minimal.json
 data/processed/
+data/eval/report_*.json
 
 # Model/cache artifacts
 *.safetensors

@@ -18,16 +18,22 @@ Implemented now:
 
 ## Quickstart
 
-1. Bootstrap and create env file:
-   - `make bootstrap`
+1. Select the local conda environment and create env file:
+   - `conda activate uni`
    - `cp .env.example .env`
 2. Ingest sample data:
    - `make ingest-sample`
+   - Use `make reset-ingest-sample` when you want to rebuild local Chroma from the expanded demo corpus.
+   - Use `make ingest-ifixit-broad` for a larger live iFixit appliance corpus.
 3. Start backend:
    - `make run-backend`
 4. Open:
    - API docs: `http://127.0.0.1:8000/docs`
-   - Frontend: `http://127.0.0.1:8000/frontend`
+   - Legacy static frontend: `http://127.0.0.1:8000/frontend`
+5. Start the Stage 5 Next.js frontend:
+   - `make frontend-install`
+   - `make run-frontend`
+   - Open `http://127.0.0.1:3000`
 
 ## API Smoke Tests
 
@@ -68,6 +74,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/chat \
 Run:
 
 - `make test`
+- `make evaluate-rag`
 
 Current tests cover:
 
@@ -113,15 +120,72 @@ Chat endpoints mirror retrieval strategy:
 
 ### Stage 3 verification
 
-Stage 3 is implemented and tested: reranked + HyDE routes, `scripts/compare_strategies.py`, `eval/benchmark_stage3.json`, and `backend/tests/test_stage3_strategies.py`. Default chat retrieval strategy is documented via `CHAT_RETRIEVAL_STRATEGY` (default `naive`).
+Stage 3 is implemented and tested: reranked + HyDE routes, `scripts/compare_strategies.py`, `eval/benchmark_stage3.json`, and `backend/tests/test_stage3_strategies.py`. Default agent chat retrieval strategy is `reranked`; reranker failures fall back to dense retrieval so local demos do not break when the cross-encoder is unavailable.
 
 ## Stage 4 Agent + SQLite persistence
 
-- **Tools** (typed I/O in `backend/app/services/agent/`): `Manual_Search_Tool`, `Safety_Protocol_Checker`, `Part_Identifier`, `Symptom_Clarifier`, `Step_By_Step_Guide_Formatter`.
-- **Orchestration**: safety first → optional clarification for ambiguous symptoms → retrieval → parts hints → formatted steps → SLM answer.
+- **Model runtime**: LM Studio at `LMSTUDIO_BASE_URL` with `SLM_MODEL_NAME=qwen2.5-7b-instruct-mlx` by default.
+- **Tools** (typed I/O in `backend/app/services/agent/`): `Manual_Search_Tool`, `Safety_Protocol_Checker`, `Part_Identifier`, `Symptom_Clarifier`, `Step_By_Step_Guide_Formatter`, and `finalize_answer`.
+- **Orchestration**: LM Studio runs a ReAct tool-calling loop by default. Send `"agent_mode": "pipeline"` to use the deterministic safety → clarify → retrieval → parts → formatted steps fallback.
+- **Intent routing**: general questions such as "what can you help me with?" skip retrieval and return capability guidance instead of random repair steps.
+- **Retrieval confidence**: `RETRIEVAL_MIN_SCORE` blocks low-confidence retrieved chunks from becoming repair guidance and asks for more appliance/symptom detail.
 - **Persistence**: SQLite at `CHAT_DB_PATH` (default `./data/chat.sqlite`); responses include `session_id` for follow-up turns.
-- **Structured payload**: responses include `structured` (`answer_summary`, `clarifying_question`, `likely_issue`, `steps`, `parts_list`, `retrieved_guide_snippets`, `tool_trace`) plus legacy `answer` and `citations`.
+- **Structured payload**: responses include `structured` (`answer_summary`, `clarifying_question`, `likely_issue`, `steps`, `parts_list`, `tools_required`, `retrieved_guide_snippets`, `tool_trace`) plus legacy `answer` and `citations`.
+- **Live iFixit lookup**: disabled by default with `USE_IFIXIT_LIVE_LOOKUP=false`; enable only when you want network guide suggestions in addition to local Chroma retrieval.
+- **Demo corpus**: `data/raw/sample_ifixit_minimal.json` contains appliance-focused washer, dryer, refrigerator, dishwasher, oven, and microwave cases so local Chroma retrieval works offline.
 - **Compatibility**: send `"use_legacy_chat": true` on `POST /api/v1/chat` to use the Stage 1–3 direct RAG path only.
+
+## Stage 5 Frontend, Evaluation, and Fine-Tuning
+
+Implemented now:
+
+- [x] Next.js chat UI in `frontend/`
+- [x] Chat history in the browser with backend `session_id` continuity
+- [x] Appliance, brand, model, and retrieval-strategy controls
+- [x] Structured rendering for safety warnings, clarifying questions, repair steps, parts, retrieved snippets, citations, and live iFixit guide candidates
+- [x] CORS support for the local Next.js dev server
+- [x] Evaluation wrapper at `scripts/evaluate_rag.py`
+- [x] Stage 5 benchmark path at `data/eval/troubleshooting_queries.json`
+- [x] QLoRA SFT and DPO workflow templates under `training/`
+- [x] Starter SFT and DPO seed datasets under `data/fine_tuning/`
+- [x] Final demo script at `docs/demo/stage5_demo_script.md`
+
+### Frontend development
+
+The richer frontend runs separately from FastAPI:
+
+```bash
+make run-backend
+make frontend-install
+make run-frontend
+```
+
+Use `frontend/.env.example` as the frontend environment template. The default API base is `http://127.0.0.1:8000`.
+
+### Evaluation
+
+Run:
+
+```bash
+python scripts/evaluate_rag.py --input data/eval/troubleshooting_queries.json --strategies naive reranked hyde
+```
+
+The default report path is `data/eval/report_stage5.json`. The older Stage 3 script remains available as `scripts/compare_strategies.py`.
+
+### Fine-tuning materials
+
+The final demo package includes training templates rather than a completed GPU training run:
+
+- `training/sft/train_qwen25_qlora_sft.py`: Qwen 2.5 3B QLoRA SFT for tool calling and appliance-domain examples.
+- `training/dpo/train_qwen25_qlora_dpo.py`: DPO workflow for safety preference pairs.
+- `data/fine_tuning/tool_calling_sft_seed.jsonl`: starter ChatML-style tool-calling examples.
+- `data/fine_tuning/dpo_preferences_seed.jsonl`: starter chosen/rejected safety pairs.
+
+Known limitations:
+
+- The seed datasets are intentionally small and should be expanded before real training.
+- The frontend uses local browser state for message history display; durable persistence is provided by backend SQLite sessions.
+- Live iFixit candidates depend on network availability and `USE_IFIXIT_LIVE_LOOKUP`.
 
 ## Architecture Plan 
 
@@ -129,7 +193,7 @@ Stage 3 is implemented and tested: reranked + HyDE routes, `scripts/compare_stra
 
 DIY-Assist is an intelligent, agentic diagnostic application that guides homeowners safely through appliance troubleshooting. [^1] The core problem it addresses is the gap between dense, highly technical manufacturer documentation and the homeowner's ability to safely interpret and apply that information. Existing solutions such as web forums provide contradictory advice, while static manuals and iFixit guides are difficult to navigate without knowing exact part names. [^1] Generic LLMs are prone to hallucinating non-existent parts or troubleshooting steps and lack strict safety guardrails. [^1]​
 
-The system uses a fine-tuned Small Language Model (Qwen 2.5 3B) as the core decision-making agent, operating within a ReAct (Reason + Act) loop to understand user symptoms, ask clarifying questions, and dynamically select diagnostic tools. [^1] Safety is enforced through RLHF-based guardrails: if the agent detects hazardous conditions such as gas smells or exposed wiring, it halts troubleshooting and advises the user to contact a professional. [^1]​
+The system uses a local Qwen 2.5 Instruct model served through LM Studio as the core decision-making agent, operating within a ReAct (Reason + Act) loop to understand user symptoms, ask clarifying questions, and dynamically select diagnostic tools. [^1] Safety is enforced through RLHF-based guardrails: if the agent detects hazardous conditions such as gas smells or exposed wiring, it halts troubleshooting and advises the user to contact a professional. [^1]​
 
 ## 2. System Architecture
 

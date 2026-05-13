@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 import httpx
@@ -5,16 +6,8 @@ import httpx
 from app.core.config import settings
 
 
-def _provider() -> str:
-    return str(getattr(settings, "slm_provider", "ollama")).lower()
-
-
-def _model_name() -> str:
-    return str(getattr(settings, "slm_model_name", "qwen2.5-3b"))
-
-
-def _ollama_base() -> str:
-    return str(getattr(settings, "ollama_base_url", "http://127.0.0.1:11434"))
+def _model_name(model_name: str | None = None) -> str:
+    return str(model_name or getattr(settings, "slm_model_name", "qwen2.5-7b-instruct-mlx"))
 
 
 def _lmstudio_base() -> str:
@@ -22,7 +15,7 @@ def _lmstudio_base() -> str:
 
 
 def _timeout_seconds() -> int:
-    return int(getattr(settings, "ollama_timeout_seconds", 60))
+    return int(getattr(settings, "lmstudio_timeout_seconds", 60))
 
 
 class SLMWrapper:
@@ -31,6 +24,7 @@ class SLMWrapper:
         user_query: str,
         retrieved_chunks: list[dict[str, Any]],
         live_ifixit_guides: list[dict[str, Any]] | None = None,
+        model_name: str | None = None,
     ) -> str:
         if not retrieved_chunks:
             return (
@@ -43,7 +37,7 @@ class SLMWrapper:
             retrieved_chunks=retrieved_chunks,
             live_ifixit_guides=live_ifixit_guides or [],
         )
-        answer = self._generate(prompt)
+        answer = self._generate(prompt, model_name=model_name)
         if answer:
             return answer
 
@@ -54,7 +48,7 @@ class SLMWrapper:
             "Safety: disconnect power and water/gas supply (if applicable) before inspection."
         )
 
-    def generate_hypothetical_answer(self, user_query: str) -> str:
+    def generate_hypothetical_answer(self, user_query: str, model_name: str | None = None) -> str:
         """
         HyDE helper: produce a short hypothetical answer for retrieval.
 
@@ -65,39 +59,17 @@ class SLMWrapper:
             "Do NOT mention sources. Do NOT ask questions. Keep it general and safe.\n\n"
             f"User issue: {user_query}\n"
         )
-        text = self._generate(prompt)
+        text = self._generate(prompt, model_name=model_name)
         cleaned = (text or "").strip()
         return cleaned or user_query
 
-    def _generate(self, prompt: str) -> str | None:
-        if _provider() == "lmstudio":
-            return self._generate_with_lmstudio(prompt)
-        return self._generate_with_ollama(prompt)
+    def _generate(self, prompt: str, model_name: str | None = None) -> str | None:
+        return self._generate_with_lmstudio(prompt, model_name=model_name)
 
-    def _generate_with_ollama(self, prompt: str) -> str | None:
-        url = f"{_ollama_base()}/api/generate"
-        payload = {
-            "model": _model_name(),
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0.2},
-        }
-        try:
-            with httpx.Client(timeout=_timeout_seconds()) as client:
-                response = client.post(url, json=payload)
-                response.raise_for_status()
-            data = response.json()
-            if isinstance(data, dict):
-                text = str(data.get("response") or "").strip()
-                return text or None
-            return None
-        except Exception:
-            return None
-
-    def _generate_with_lmstudio(self, prompt: str) -> str | None:
+    def _generate_with_lmstudio(self, prompt: str, model_name: str | None = None) -> str | None:
         url = f"{_lmstudio_base()}/chat/completions"
         payload = {
-            "model": _model_name(),
+            "model": _model_name(model_name),
             "messages": [
                 {"role": "system", "content": "You are a safety-first DIY appliance assistant."},
                 {"role": "user", "content": prompt},
@@ -117,6 +89,68 @@ class SLMWrapper:
             return text or None
         except Exception:
             return None
+
+    def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tool_choice: str | dict[str, Any] = "auto",
+        model_name: str | None = None,
+    ) -> dict[str, Any]:
+        url = f"{_lmstudio_base()}/chat/completions"
+        payload = {
+            "model": _model_name(model_name),
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": tool_choice,
+            "temperature": 0.2,
+        }
+        try:
+            with httpx.Client(timeout=_timeout_seconds()) as client:
+                response = client.post(url, json=payload)
+                response.raise_for_status()
+            data = response.json()
+            choices = data.get("choices", []) if isinstance(data, dict) else []
+            if not choices:
+                return {"content": None, "tool_calls": []}
+            message = choices[0].get("message", {})
+            return {
+                "content": str(message.get("content") or "").strip() or None,
+                "tool_calls": self._parse_tool_calls(message.get("tool_calls") or []),
+            }
+        except Exception as exc:
+            return {"content": None, "tool_calls": [], "error": str(exc)}
+
+    @staticmethod
+    def _parse_tool_calls(raw_tool_calls: list[Any]) -> list[dict[str, Any]]:
+        parsed: list[dict[str, Any]] = []
+        for index, raw in enumerate(raw_tool_calls):
+            if not isinstance(raw, dict):
+                continue
+            function = raw.get("function") if isinstance(raw.get("function"), dict) else {}
+            name = str(function.get("name") or raw.get("name") or "").strip()
+            if not name:
+                continue
+            raw_args = function.get("arguments", raw.get("arguments", {}))
+            arguments: dict[str, Any]
+            if isinstance(raw_args, str):
+                try:
+                    loaded = json.loads(raw_args or "{}")
+                    arguments = loaded if isinstance(loaded, dict) else {}
+                except json.JSONDecodeError:
+                    arguments = {"_malformed_arguments": raw_args}
+            elif isinstance(raw_args, dict):
+                arguments = raw_args
+            else:
+                arguments = {}
+            parsed.append(
+                {
+                    "id": str(raw.get("id") or f"tool-call-{index}"),
+                    "name": name,
+                    "arguments": arguments,
+                }
+            )
+        return parsed
 
     def _build_prompt(
         self,

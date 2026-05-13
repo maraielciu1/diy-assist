@@ -26,6 +26,54 @@
       ]
     },
     {
+      "guideid": "washer-002",
+      "title": "Washer Leaking From Front Door",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Washer-Leaking-From-Front-Door/washer-002",
+      "brand": "Samsung",
+      "model": "WF45R6100AW",
+      "difficulty": "easy",
+      "tools": ["Towel", "Flashlight", "Mild cleaner"],
+      "steps": [
+        {
+          "title": "Inspect the door gasket",
+          "text": "Unplug the washer. Check the rubber door boot for tears, trapped clothing, detergent residue, or debris that prevents the door from sealing."
+        },
+        {
+          "title": "Clean the sealing surface",
+          "text": "Wipe the door glass and gasket lip with mild cleaner, then remove hair, lint, or coins from the lower gasket fold."
+        },
+        {
+          "title": "Check for overloading",
+          "text": "Run a small rinse cycle. Overloaded front-load washers can push water past the door seal even when the gasket is not damaged."
+        }
+      ]
+    },
+    {
+      "guideid": "washer-003",
+      "title": "Washer Fills But Does Not Spin",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Washer-Fills-But-Does-Not-Spin/washer-003",
+      "brand": "LG",
+      "model": "WM3400CW",
+      "difficulty": "moderate",
+      "tools": ["Phillips screwdriver", "Flashlight"],
+      "steps": [
+        {
+          "title": "Check load balance",
+          "text": "Pause the cycle and redistribute heavy items. A severely unbalanced load can stop spin to protect the tub and suspension."
+        },
+        {
+          "title": "Confirm the door lock engages",
+          "text": "Listen for the door lock click before spin. If the control does not detect a locked door, it will not spin the basket."
+        },
+        {
+          "title": "Inspect belt or motor access",
+          "text": "Disconnect power before opening panels. Look for a loose drive belt, worn pulley, or motor fault symptoms if the washer hums but the basket does not move."
+        }
+      ]
+    },
+    {
       "guideid": "dryer-001",
       "title": "Dryer Takes Too Long to Dry Clothes",
       "category": "Appliance",
@@ -50,6 +98,54 @@
       ]
     },
     {
+      "guideid": "dryer-002",
+      "title": "Dryer Runs But Has No Heat",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Dryer-Runs-But-No-Heat/dryer-002",
+      "brand": "Whirlpool",
+      "model": "WED4815EW",
+      "difficulty": "moderate",
+      "tools": ["Multimeter", "Nut driver", "Vacuum"],
+      "steps": [
+        {
+          "title": "Verify airflow first",
+          "text": "Clean the lint screen and vent path. Restricted airflow can trip safety thermostats and make the dryer stop heating."
+        },
+        {
+          "title": "Check the thermal fuse",
+          "text": "Disconnect power. Access the blower housing and test the thermal fuse for continuity with a multimeter."
+        },
+        {
+          "title": "Inspect heating element",
+          "text": "With power disconnected, inspect the heating element coil for breaks or grounding against the heater housing."
+        }
+      ]
+    },
+    {
+      "guideid": "dryer-003",
+      "title": "Dryer Squeals or Thumps While Running",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Dryer-Squeals-Or-Thumps/dryer-003",
+      "brand": "Maytag",
+      "model": "MED4500MW",
+      "difficulty": "moderate",
+      "tools": ["Phillips screwdriver", "Putty knife"],
+      "steps": [
+        {
+          "title": "Listen for roller noise",
+          "text": "A rhythmic thump or squeal often comes from worn drum support rollers. Stop the dryer if the drum scrapes or binds."
+        },
+        {
+          "title": "Inspect idler pulley and belt",
+          "text": "Unplug the dryer before removing panels. Check whether the idler pulley spins freely and whether the belt is cracked or glazed."
+        },
+        {
+          "title": "Check drum glides",
+          "text": "Look for worn front drum glides or felt seals that let the drum rub against the cabinet."
+        }
+      ]
+    },
+    {
       "guideid": "fridge-001",
       "title": "Refrigerator Warm but Freezer Cold",
       "category": "Appliance",
@@ -70,6 +166,174 @@
         {
           "title": "Confirm evaporator fan operation",
           "text": "Listen for the evaporator fan in the freezer compartment; no fan movement can cause poor refrigerator cooling."
+        }
+      ]
+    },
+    {
+      "guideid": "fridge-002",
+      "title": "Refrigerator Clicking and Not Cooling",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Refrigerator-Clicking-Not-Cooling/fridge-002",
+      "brand": "GE",
+      "model": "GTS18HGNRWW",
+      "difficulty": "moderate",
+      "tools": ["Vacuum", "Multimeter", "Nut driver"],
+      "steps": [
+        {
+          "title": "Clean condenser area",
+          "text": "Unplug the refrigerator and vacuum the condenser coils and compressor area so the sealed system can reject heat."
+        },
+        {
+          "title": "Listen for start relay clicks",
+          "text": "Repeated clicking near the compressor can point to a weak start relay, overload, or compressor start problem."
+        },
+        {
+          "title": "Check condenser fan",
+          "text": "Make sure the condenser fan runs when the compressor runs. A failed fan can cause overheating and poor cooling."
+        }
+      ]
+    },
+    {
+      "guideid": "dishwasher-001",
+      "title": "Dishwasher Not Cleaning Dishes Well",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Dishwasher-Not-Cleaning-Dishes/dishwasher-001",
+      "brand": "Bosch",
+      "model": "SHE3AR75UC",
+      "difficulty": "easy",
+      "tools": ["Soft brush", "Towel"],
+      "steps": [
+        {
+          "title": "Clean the filter",
+          "text": "Remove the lower rack and clean the dishwasher filter assembly to clear food debris that blocks water circulation."
+        },
+        {
+          "title": "Inspect spray arms",
+          "text": "Remove or rotate spray arms and clear clogged holes with a toothpick or soft brush."
+        },
+        {
+          "title": "Check water temperature and loading",
+          "text": "Run hot water at the sink before starting the dishwasher and avoid blocking spray arms with tall dishes."
+        }
+      ]
+    },
+    {
+      "guideid": "dishwasher-002",
+      "title": "Dishwasher Will Not Drain",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Dishwasher-Will-Not-Drain/dishwasher-002",
+      "brand": "KitchenAid",
+      "model": "KDFE104HPS",
+      "difficulty": "easy",
+      "tools": ["Towel", "Bucket", "Screwdriver"],
+      "steps": [
+        {
+          "title": "Clear standing water safely",
+          "text": "Cancel the cycle, disconnect power, and bail out standing water before opening the filter or pump area."
+        },
+        {
+          "title": "Check the drain hose loop",
+          "text": "Inspect the drain hose under the sink for kinks, clogs, or a missing high loop that lets water flow back."
+        },
+        {
+          "title": "Inspect filter and drain pump",
+          "text": "Remove the filter cover and check the drain pump inlet for glass, labels, seeds, or other debris."
+        }
+      ]
+    },
+    {
+      "guideid": "dishwasher-003",
+      "title": "Dishwasher Leaking From Underneath",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Dishwasher-Leaking-Underneath/dishwasher-003",
+      "brand": "Frigidaire",
+      "model": "FFCD2413US",
+      "difficulty": "moderate",
+      "tools": ["Towel", "Flashlight", "Pliers"],
+      "steps": [
+        {
+          "title": "Shut off power and water",
+          "text": "Stop the cycle, turn off power at the breaker, and close the water supply valve before inspecting underneath."
+        },
+        {
+          "title": "Check hose connections",
+          "text": "Inspect the inlet hose, drain hose, and clamp connections for loose fittings, cracks, or mineral trails."
+        },
+        {
+          "title": "Inspect pump seal area",
+          "text": "Look for dripping around the pump and motor assembly. A leaking pump seal usually requires part replacement."
+        }
+      ]
+    },
+    {
+      "guideid": "oven-001",
+      "title": "Electric Oven Not Heating Evenly",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Electric-Oven-Not-Heating-Evenly/oven-001",
+      "brand": "Frigidaire",
+      "model": "FGEF3059TF",
+      "difficulty": "moderate",
+      "tools": ["Oven thermometer", "Screwdriver"],
+      "steps": [
+        {
+          "title": "Check rack position and airflow",
+          "text": "Make sure pans are not blocking convection airflow and verify racks are placed according to the cooking mode."
+        },
+        {
+          "title": "Test temperature accuracy",
+          "text": "Place an oven thermometer in the center of the oven and compare actual temperature against the set temperature after preheat."
+        },
+        {
+          "title": "Inspect bake and broil elements",
+          "text": "Turn the oven off and let it cool. Look for blistering, breaks, or uneven glowing on the bake and broil elements."
+        }
+      ]
+    },
+    {
+      "guideid": "oven-002",
+      "title": "Gas Oven Will Not Ignite",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Gas-Oven-Will-Not-Ignite/oven-002",
+      "brand": "GE",
+      "model": "JGBS66REKSS",
+      "difficulty": "moderate",
+      "tools": ["Flashlight", "Screwdriver"],
+      "steps": [
+        {
+          "title": "Check for gas smell first",
+          "text": "If you smell gas, stop troubleshooting, leave the area, and contact the gas utility or a qualified technician."
+        },
+        {
+          "title": "Observe igniter glow",
+          "text": "If there is no gas smell, watch whether the oven igniter glows during bake. A weak igniter may glow but fail to open the gas valve."
+        },
+        {
+          "title": "Inspect burner ports",
+          "text": "With the oven off and cool, check for food debris blocking burner ports near the igniter."
+        }
+      ]
+    },
+    {
+      "guideid": "microwave-001",
+      "title": "Microwave External Checks Before Service",
+      "category": "Appliance",
+      "url": "https://www.ifixit.com/Guide/Microwave-External-Checks/microwave-001",
+      "brand": "Panasonic",
+      "model": "NN-SN686S",
+      "difficulty": "professional",
+      "tools": ["None"],
+      "steps": [
+        {
+          "title": "Do not open the cabinet",
+          "text": "Microwaves can retain dangerous high voltage after unplugging. Do not remove the outer cover or touch internal parts."
+        },
+        {
+          "title": "Check simple external causes",
+          "text": "Verify the outlet, door closure, timer settings, and turntable operation without opening the appliance."
+        },
+        {
+          "title": "Escalate internal failures",
+          "text": "No heat, buzzing, burning smells, or arcing usually require a qualified technician because internal high-voltage parts are hazardous."
         }
       ]
     }

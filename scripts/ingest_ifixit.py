@@ -4,9 +4,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import typing
 import typing_extensions
@@ -106,7 +108,7 @@ def _extract_step_texts(guide: dict[str, Any]) -> list[dict[str, Any]]:
             out.append(
                 {
                     "step_number": idx,
-                    "text": f"Step {idx}: {text}",
+                    "text": text,
                     "tools": step_tools,
                 }
             )
@@ -141,6 +143,13 @@ def _extract_difficulty(guide: dict[str, Any]) -> str:
     if isinstance(difficulty, str) and difficulty.strip():
         return difficulty.strip()
     return "unknown"
+
+
+def _extract_source_url(guide: dict[str, Any]) -> str:
+    url = str(guide.get("url") or guide.get("public_url") or "").strip()
+    if url.startswith("/"):
+        return f"https://www.ifixit.com{url}"
+    return url
 
 
 def _infer_appliance_type(guide_title: str, guide_text: str) -> str:
@@ -179,7 +188,7 @@ def _normalized_guide_record(guide: dict[str, Any], index_hint: int) -> dict[str
         "model": model,
         "difficulty": _extract_difficulty(guide),
         "tools": tools,
-        "source_url": str(guide.get("url") or guide.get("public_url") or ""),
+        "source_url": _extract_source_url(guide),
         "guide_text": guide_text,
         "steps": steps,
     }
@@ -193,35 +202,124 @@ def _fetch_guide_detail(client: httpx.Client, guide_id: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def _fetch_guides_from_api(limit: int, category: str | None, query: str | None) -> list[dict[str, Any]]:
-    params: dict[str, Any] = {"limit": limit}
+def _fetch_guides_page(
+    client: httpx.Client,
+    *,
+    limit: int,
+    offset: int,
+    category: str | None,
+    query: str | None,
+) -> list[dict[str, Any]]:
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
     if category:
         params["category"] = category
     if query:
         params["q"] = query
 
     url = f"{settings.ifixit_api_base_url}/guides"
-    with httpx.Client(timeout=_ifixit_timeout_seconds()) as client:
-        response = client.get(url, params=params)
-        response.raise_for_status()
-        guides = _extract_guides(response.json())
+    response = client.get(url, params=params)
+    response.raise_for_status()
+    return _extract_guides(response.json())
 
-        enriched: list[dict[str, Any]] = []
-        for guide in guides:
-            if guide.get("steps"):
-                enriched.append(guide)
-                continue
-            guide_id = guide.get("guideid") or guide.get("id")
-            if guide_id is None:
-                enriched.append(guide)
-                continue
-            try:
-                detail = _fetch_guide_detail(client, str(guide_id))
-                merged = {**guide, **detail}
-                enriched.append(merged)
-            except Exception:
-                enriched.append(guide)
-        return enriched[:limit]
+
+def _fetch_category_payload(client: httpx.Client, category: str) -> dict[str, Any]:
+    encoded = quote(category, safe="")
+    url = f"{settings.ifixit_api_base_url}/categories/{encoded}"
+    response = client.get(url)
+    response.raise_for_status()
+    data = response.json()
+    return data if isinstance(data, dict) else {}
+
+
+def _enrich_guides(client: httpx.Client, guides: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for guide in guides:
+        if guide.get("steps"):
+            enriched.append(guide)
+            continue
+        guide_id = guide.get("guideid") or guide.get("id")
+        if guide_id is None:
+            enriched.append(guide)
+            continue
+        try:
+            time.sleep(0.2)
+            detail = _fetch_guide_detail(client, str(guide_id))
+            merged = {**guide, **detail}
+            enriched.append(merged)
+        except Exception:
+            enriched.append(guide)
+    return enriched
+
+
+def _fetch_guides_from_api(
+    limit: int,
+    category: str | None,
+    query: str | None,
+    page_size: int = 100,
+) -> list[dict[str, Any]]:
+    page_size = max(1, min(page_size, limit))
+    collected: list[dict[str, Any]] = []
+    offset = 0
+    with httpx.Client(timeout=_ifixit_timeout_seconds()) as client:
+        while len(collected) < limit:
+            remaining = limit - len(collected)
+            request_size = min(page_size, remaining)
+            guides = _fetch_guides_page(
+                client,
+                limit=request_size,
+                offset=offset,
+                category=category,
+                query=query,
+            )
+            if not guides:
+                break
+            collected.extend(guides)
+            offset += len(guides)
+            if len(guides) < request_size:
+                break
+        return _enrich_guides(client, collected[:limit])
+
+
+def _fetch_guides_for_categories(
+    categories: list[str],
+    per_category: int,
+    query: str | None,
+    page_size: int = 100,
+) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    with httpx.Client(timeout=_ifixit_timeout_seconds()) as client:
+        for category in categories:
+            category_guides: list[dict[str, Any]] = []
+            pending = [category]
+            visited_categories: set[str] = set()
+            while pending and len(category_guides) < per_category:
+                current = pending.pop(0)
+                if current in visited_categories:
+                    continue
+                visited_categories.add(current)
+                try:
+                    payload = _fetch_category_payload(client, current)
+                except Exception:
+                    continue
+                for child in payload.get("children", []):
+                    if isinstance(child, str) and child not in visited_categories:
+                        pending.append(child)
+                for guide in _extract_guides(payload.get("guides", [])):
+                    title = str(guide.get("title") or "")
+                    haystack = f"{title} {guide.get('category') or ''}".lower()
+                    if query and query.lower() not in haystack:
+                        continue
+                    guide_id = str(guide.get("guideid") or guide.get("id") or "")
+                    dedupe_key = guide_id or title
+                    if not dedupe_key or dedupe_key in seen:
+                        continue
+                    seen.add(dedupe_key)
+                    category_guides.append(guide)
+                    if len(category_guides) >= per_category:
+                        break
+            merged.extend(_enrich_guides(client, category_guides[:per_category]))
+    return merged
 
 
 def _save_raw_payload(guides: list[dict[str, Any]], source: str) -> Path:
@@ -305,6 +403,24 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest iFixit guides into ChromaDB.")
     parser.add_argument("--limit", type=int, default=25, help="Number of guides to ingest.")
     parser.add_argument("--category", type=str, default=None, help="Optional category filter.")
+    parser.add_argument(
+        "--categories",
+        type=str,
+        default=None,
+        help="Comma-separated category list for balanced ingestion.",
+    )
+    parser.add_argument(
+        "--per-category",
+        type=int,
+        default=150,
+        help="Number of guides to fetch per category when --categories is set.",
+    )
+    parser.add_argument(
+        "--page-size",
+        type=int,
+        default=100,
+        help="Number of guides to request per iFixit API page.",
+    )
     parser.add_argument("--query", type=str, default=None, help="Optional query keyword.")
     parser.add_argument(
         "--input-json",
@@ -320,7 +436,25 @@ def main() -> None:
         source = "input"
     else:
         try:
-            guides = _fetch_guides_from_api(limit=args.limit, category=args.category, query=args.query)
+            if args.categories:
+                categories = [
+                    category.strip()
+                    for category in args.categories.split(",")
+                    if category.strip()
+                ]
+                guides = _fetch_guides_for_categories(
+                    categories=categories,
+                    per_category=args.per_category,
+                    query=args.query,
+                    page_size=args.page_size,
+                )
+            else:
+                guides = _fetch_guides_from_api(
+                    limit=args.limit,
+                    category=args.category,
+                    query=args.query,
+                    page_size=args.page_size,
+                )
             source = "api"
         except Exception as exc:
             print(f"iFixit fetch failed: {exc}")

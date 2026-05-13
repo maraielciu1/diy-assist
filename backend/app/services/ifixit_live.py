@@ -39,7 +39,30 @@ class IFixitLiveClient:
                     guides = [x for x in candidate if isinstance(x, dict)]
                     break
 
-        query_terms = {token.strip().lower() for token in query.split() if token.strip()}
+        stopwords = {
+            "a",
+            "an",
+            "and",
+            "can",
+            "do",
+            "i",
+            "is",
+            "it",
+            "me",
+            "my",
+            "near",
+            "the",
+            "to",
+            "what",
+            "when",
+            "with",
+            "you",
+        }
+        query_terms = {
+            token.strip(".,?!:;()[]{}").lower()
+            for token in query.split()
+            if token.strip(".,?!:;()[]{}").lower() not in stopwords
+        }
 
         ranked: list[dict[str, Any]] = []
         for guide in guides:
@@ -48,6 +71,8 @@ class IFixitLiveClient:
                 continue
             title_terms = set(title.lower().split())
             overlap = len(query_terms.intersection(title_terms))
+            if overlap <= 0:
+                continue
             ranked.append(
                 {
                     "guide_id": str(guide.get("guideid") or guide.get("id") or ""),

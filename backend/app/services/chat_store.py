@@ -57,6 +57,13 @@ class ChatStore:
                 )
                 """
             )
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()
+            }
+            for column in ("appliance_category", "appliance_type", "brand", "model"):
+                if column not in columns:
+                    conn.execute(f"ALTER TABLE chat_sessions ADD COLUMN {column} TEXT")
             conn.commit()
 
     def create_session(
@@ -85,8 +92,64 @@ class ChatStore:
                     model,
                 ),
             )
+            conn.execute(
+                """
+                UPDATE chat_sessions
+                SET appliance_category = COALESCE(NULLIF(?, ''), appliance_category),
+                    appliance_type = COALESCE(NULLIF(?, ''), appliance_type),
+                    brand = COALESCE(NULLIF(?, ''), brand),
+                    model = COALESCE(NULLIF(?, ''), model)
+                WHERE id = ?
+                """,
+                (appliance_category, appliance_type, brand, model, sid),
+            )
             conn.commit()
         return sid
+
+    def get_session(self, session_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM chat_sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_session_context(
+        self,
+        session_id: str,
+        *,
+        appliance_category: str | None = None,
+        appliance_type: str | None = None,
+        brand: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE chat_sessions
+                SET appliance_category = COALESCE(NULLIF(?, ''), appliance_category),
+                    appliance_type = COALESCE(NULLIF(?, ''), appliance_type),
+                    brand = COALESCE(NULLIF(?, ''), brand),
+                    model = COALESCE(NULLIF(?, ''), model)
+                WHERE id = ?
+                """,
+                (appliance_category, appliance_type, brand, model, session_id),
+            )
+            conn.commit()
+
+    def get_recent_messages(self, session_id: str, limit: int = 8) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT role, content
+                FROM chat_messages
+                WHERE session_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (session_id, limit),
+            ).fetchall()
+        return [dict(row) for row in reversed(rows)]
 
     def append_message(
         self,

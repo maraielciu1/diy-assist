@@ -64,7 +64,8 @@ def test_extraction_handles_alternate_ifixit_shapes() -> None:
     assert record["model"] == "WTR85V"
     assert record["difficulty"] == "Moderate"
     assert "Phillips #2" in record["tools"]
-    assert record["steps"][0]["text"].startswith("Step 1:")
+    assert record["steps"][0]["step_number"] == 1
+    assert not record["steps"][0]["text"].startswith("Step 1:")
 
 
 def test_retriever_where_clause_supports_brand_and_model() -> None:
@@ -160,6 +161,7 @@ def test_api_response_shape_includes_stage2_fields(monkeypatch) -> None:
             "appliance_category": "Appliance",
             "brand": "Whirlpool",
             "model": "WFW5605MC",
+            "agent_mode": "pipeline",
             "top_k": 3,
         },
     )

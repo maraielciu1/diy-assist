@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from app.services.agent.schemas import (
@@ -18,8 +19,99 @@ from app.services.agent.tools import (
     SafetyProtocolChecker,
     StepByStepGuideFormatter,
     SymptomClarifier,
+    extract_required_tools,
 )
 from app.services.chat_store import ChatStore, get_chat_store
+from app.core.config import settings
+
+
+_APPLIANCE_WORDS = {
+    "washer",
+    "washing machine",
+    "dryer",
+    "dishwasher",
+    "refrigerator",
+    "fridge",
+    "freezer",
+    "oven",
+    "microwave",
+    "stove",
+}
+_SYMPTOM_WORDS = {
+    "leak",
+    "leaking",
+    "noise",
+    "noisy",
+    "hum",
+    "humming",
+    "drain",
+    "draining",
+    "spin",
+    "spinning",
+    "heat",
+    "heating",
+    "cool",
+    "cooling",
+    "warm",
+    "cold",
+    "start",
+    "broken",
+    "error",
+    "smell",
+    "smoke",
+    "spark",
+    "vibrate",
+    "shaking",
+    "latch",
+    "clog",
+    "filter",
+    "pump",
+    "vent",
+}
+_CAPABILITY_QUESTIONS = (
+    "what can you help",
+    "how can you help",
+    "what do you do",
+    "who are you",
+    "help me with",
+)
+
+
+def _is_capability_question(query: str) -> bool:
+    lowered = query.lower().strip()
+    return any(phrase in lowered for phrase in _CAPABILITY_QUESTIONS)
+
+
+def _looks_like_repair_request(query: str) -> bool:
+    lowered = query.lower()
+    return any(word in lowered for word in _APPLIANCE_WORDS) or any(
+        word in lowered for word in _SYMPTOM_WORDS
+    )
+
+
+def _retrieval_confidence(snippets: list[Any]) -> float:
+    scores: list[float] = []
+    for snippet in snippets:
+        meta = getattr(snippet, "metadata", {}) or {}
+        raw_score = meta.get("baseline_score", getattr(snippet, "score", 0.0))
+        try:
+            scores.append(float(raw_score))
+        except (TypeError, ValueError):
+            continue
+    return max(scores) if scores else 0.0
+
+
+def _answer_summary(answer_text: str | None) -> str | None:
+    if not answer_text:
+        return None
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", answer_text.strip())
+        if sentence.strip()
+    ]
+    if not sentences:
+        return answer_text.strip()[:500]
+    return " ".join(sentences[:2])[:500]
 
 
 class ChatTurnInput:
@@ -55,6 +147,7 @@ def run_agent_chat(
     live_ifixit_fn: Callable[..., list] | None,
     provider_name: str,
     store: ChatStore | None = None,
+    skip_user_append: bool = False,
 ) -> dict[str, Any]:
     """
     Run safety → clarify → manual search → parts → format → SLM answer.
@@ -74,7 +167,8 @@ def run_agent_chat(
         brand=turn.brand,
         model=turn.model,
     )
-    store.append_message(sid, role="user", content=turn.query)
+    if not skip_user_append:
+        store.append_message(sid, role="user", content=turn.query)
 
     if not s_out.allow_troubleshooting:
         structured = StructuredChatPayload(
@@ -109,6 +203,44 @@ def run_agent_chat(
             content=s_out.escalation_message or "",
             structured=payload["structured"],
         )
+        return payload
+
+    if _is_capability_question(turn.query) or not _looks_like_repair_request(turn.query):
+        trace.append({"tool": "Intent_Router", "intent": "general_help"})
+        answer = (
+            "I can help troubleshoot home appliance problems using indexed repair guides. "
+            "Tell me the appliance type, symptom, noises, smells, leaks, error codes, and "
+            "when the problem happens. If the issue sounds hazardous, I will stop repair "
+            "guidance and tell you to contact a qualified professional."
+        )
+        structured = StructuredChatPayload(
+            answer_summary=answer,
+            clarifying_question=(
+                "What appliance are you working on, and what symptom are you seeing?"
+            ),
+            likely_issue=None,
+            steps=[],
+            parts_list=[],
+            retrieved_guide_snippets=[],
+            tool_trace=trace,
+        )
+        payload = {
+            "query": turn.query,
+            "session_id": sid,
+            "strategy": turn.strategy_label,
+            "guardrail_blocked": False,
+            "safety_warning": None,
+            "structured": structured.model_dump(),
+            "answer": answer,
+            "citations": [],
+            "live_ifixit_guides": [],
+            "live_ifixit_used": False,
+            "slm_provider": provider_name,
+            "retrieval_count": 0,
+            "agent_mode": True,
+            "intent": "general_help",
+        }
+        store.append_message(sid, role="assistant", content=answer, structured=payload["structured"])
         return payload
 
     clarify = SymptomClarifier()
@@ -160,15 +292,34 @@ def run_agent_chat(
         top_k=turn.top_k,
     )
     ms_out = search_tool.run(ms_in)
+    if turn.appliance_type:
+        ms_out.snippets = [
+            snippet
+            for snippet in ms_out.snippets
+            if (snippet.metadata or {}).get("appliance_type") in {turn.appliance_type, None, ""}
+        ]
+        ms_out.retrieval_count = len(ms_out.snippets)
     trace.append({"tool": "Manual_Search_Tool", "retrieval_count": ms_out.retrieval_count})
 
-    if ms_out.retrieval_count == 0:
+    confidence = _retrieval_confidence(ms_out.snippets)
+    min_score = float(getattr(settings, "retrieval_min_score", 0.55))
+    trace.append(
+        {
+            "tool": "Retrieval_Confidence_Check",
+            "top_score": confidence,
+            "min_score": min_score,
+            "passed": confidence >= min_score,
+        }
+    )
+
+    if ms_out.retrieval_count == 0 or confidence < min_score:
         structured = StructuredChatPayload(
             answer_summary=(
-                "No indexed repair guides matched closely enough. "
-                "Try ingesting more guides or narrowing appliance filters."
+                "I do not have enough matching repair-guide context to give reliable steps yet."
             ),
-            clarifying_question=None,
+            clarifying_question=(
+                "What appliance type, brand/model if known, and exact symptom should I troubleshoot?"
+            ),
             likely_issue=None,
             steps=[],
             parts_list=[],
@@ -190,6 +341,7 @@ def run_agent_chat(
             "slm_provider": provider_name,
             "retrieval_count": 0,
             "agent_mode": True,
+            "uncertainty": True,
         }
         store.append_message(sid, role="assistant", content=txt, structured=payload["structured"])
         return payload
@@ -244,13 +396,14 @@ def run_agent_chat(
     ]
 
     structured = StructuredChatPayload(
-        answer_summary=answer_text.split("\n")[0][:500] if answer_text else None,
         clarifying_question=None,
         likely_issue=(
             ms_out.snippets[0].metadata.get("guide_title") if ms_out.snippets else None
         ),
+        answer_summary=_answer_summary(answer_text),
         steps=[s.instruction for s in g_out.steps],
         parts_list=[p.name for p in p_out.parts],
+        tools_required=p_out.tools_required or extract_required_tools(ms_out.snippets),
         retrieved_guide_snippets=snippets_payload,
         tool_trace=trace,
     )

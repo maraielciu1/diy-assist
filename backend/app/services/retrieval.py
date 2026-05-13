@@ -161,9 +161,19 @@ class CrossEncoderReranker:
         if not candidates:
             return []
 
-        model = self._get_model()
-        pairs = [(query, c.text) for c in candidates]
-        scores = model.predict(pairs)
+        try:
+            model = self._get_model()
+            pairs = [(query, c.text) for c in candidates]
+            scores = model.predict(pairs)
+        except Exception as exc:
+            fallback: list[RetrievedChunk] = []
+            for cand in candidates[: max(top_k, 0)]:
+                meta = dict(cand.metadata or {})
+                meta["rerank_fallback"] = True
+                meta["rerank_error"] = str(exc)
+                meta["baseline_score"] = float(cand.score)
+                fallback.append(RetrievedChunk(text=cand.text, score=cand.score, metadata=meta))
+            return fallback
 
         enriched: list[RetrievedChunk] = []
         for cand, score in zip(candidates, scores):

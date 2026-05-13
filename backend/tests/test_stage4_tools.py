@@ -29,7 +29,7 @@ def test_symptom_clarifier_leaking() -> None:
     assert out.clarifying_question
 
 
-def test_part_identifier_from_metadata_and_text() -> None:
+def test_part_identifier_separates_parts_from_tools() -> None:
     snippets = [
         RetrievedSnippet(
             text="Remove debris from the drain pump filter.",
@@ -39,7 +39,9 @@ def test_part_identifier_from_metadata_and_text() -> None:
     ]
     out = PartIdentifier().identify(PartIdentifyInput(retrieved_snippets=snippets))
     names = {p.name.lower() for p in out.parts}
-    assert "towel" in names or "phillips screwdriver" in names
+    assert "pump" in names or "filter" in names
+    assert "towel" not in names
+    assert "Towel" in out.tools_required
 
 
 def test_step_formatter_orders_chunks() -> None:
