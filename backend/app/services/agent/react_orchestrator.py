@@ -1,13 +1,20 @@
-"""LLM-driven ReAct orchestration with real LM Studio tool calls."""
+"""LLM-driven ReAct orchestration with real LM Studio tool calls.
+
+The agent never synthesises responses on the LLM's behalf. If the model fails to
+produce a valid tool-call chain that ends in ``finalize_answer``, the turn fails
+loudly and an error payload is returned to the UI instead of a templated answer.
+The only server-side passthroughs are deterministic helpers that the model
+explicitly invokes (safety check, retrieval, part identifier, step formatter)
+and citation metadata copied from real retrieval hits (anti-hallucination).
+"""
 
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Callable
 
 from app.core.config import settings
-from app.services.agent.orchestrator import ChatTurnInput, run_agent_chat
+from app.services.agent.orchestrator import ChatTurnInput
 from app.services.agent.schemas import (
     ClarifyInput,
     FormatGuideInput,
@@ -37,24 +44,6 @@ def _dump(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=True)
 
 
-def _snippets_from_payload(payload: Any, fallback: list[RetrievedSnippet]) -> list[RetrievedSnippet]:
-    if not isinstance(payload, list) or not payload:
-        return fallback
-    snippets: list[RetrievedSnippet] = []
-    for item in payload:
-        if isinstance(item, RetrievedSnippet):
-            snippets.append(item)
-        elif isinstance(item, dict):
-            snippets.append(
-                RetrievedSnippet(
-                    text=str(item.get("text") or ""),
-                    score=float(item.get("score") or 0.0),
-                    metadata=dict(item.get("metadata") or {}),
-                )
-            )
-    return snippets or fallback
-
-
 def _citations(snippets: list[RetrievedSnippet]) -> list[dict[str, Any]]:
     return [
         {
@@ -81,26 +70,49 @@ def _snippets_payload(snippets: list[RetrievedSnippet]) -> list[dict[str, Any]]:
     ]
 
 
-def _looks_like_echo(summary: Any, query: str) -> bool:
-    if not isinstance(summary, str) or not summary.strip():
-        return True
-    clean_summary = re.sub(r"[^a-z0-9]+", " ", summary.lower()).strip()
-    clean_query = re.sub(r"[^a-z0-9]+", " ", query.lower()).strip()
-    return clean_summary == clean_query or clean_query in clean_summary
+def _compact_search_tool_result(snippets: list[RetrievedSnippet]) -> str:
+    """Tiny JSON returned to the model after manual_search.
+
+    Full snippet objects (with metadata + previous_steps) are kept server-side
+    in ``last_snippets`` and re-used by ``part_identifier`` / ``step_by_step_formatter``.
+    The model only needs enough context to decide what to do next.
+    """
+    compact = [
+        {
+            "rank": i + 1,
+            "text": (s.text or "")[:240],
+            "score": round(float(s.score), 4),
+            "guide_title": s.metadata.get("guide_title"),
+            "step_number": s.metadata.get("step_number"),
+        }
+        for i, s in enumerate(snippets[:5])
+    ]
+    return json.dumps(
+        {"snippets": compact, "retrieval_count": len(snippets)}, ensure_ascii=True
+    )
 
 
-def _summary_from_context(
-    *,
-    appliance_type: str | None,
-    likely_issue: str | None,
-    steps: list[str],
-) -> str:
-    appliance_label = appliance_type or "appliance"
-    if likely_issue:
-        return f"Retrieved guide context points to {likely_issue} for this {appliance_label} problem."
-    if steps:
-        return f"Retrieved guide context found {len(steps)} relevant troubleshooting steps for this {appliance_label} problem."
-    return f"Retrieved guide context found matching information for this {appliance_label} problem."
+def _shape_history_message(msg: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite stored chat history so prior assistant turns do not look like free-form chat.
+
+    Earlier turns persist the finalized ``summary`` as plain assistant text. If we
+    replay that verbatim, smaller / less tool-call-adherent models pattern-match
+    on the chat shape and reply in prose instead of calling tools. We wrap the
+    stored content in an explicit marker so the model treats it as a record of a
+    completed tool call rather than as a few-shot example of chat-mode output.
+    """
+    role = msg["role"]
+    content = (msg.get("content") or "").strip()
+    if role == "assistant":
+        truncated = content[:600]
+        return {
+            "role": "assistant",
+            "content": (
+                "[Previous turn finalized via finalize_answer tool. "
+                f"Recorded summary: {truncated}]"
+            ),
+        }
+    return {"role": role, "content": content}
 
 
 def _assistant_tool_message(content: str | None, tool_calls: list[dict[str, Any]]) -> dict[str, Any]:
@@ -131,14 +143,15 @@ def _system_prompt(session_context: dict[str, Any]) -> str:
         "Every turn ends by calling finalize_answer exactly once.\n\n"
         "Required order for a new symptom:\n"
         "  1. safety_protocol_checker on the current user message.\n"
-        "  2. If unsafe: finalize_answer immediately with safety_warning and no steps.\n"
+        "  2. If unsafe: finalize_answer immediately with a safety_warning and no steps.\n"
         "  3. If safe and the symptom is clear, call manual_search using the appliance context below.\n"
-        "  4. If manual_search returns snippets, call step_by_step_formatter and part_identifier, then finalize_answer.\n"
+        "  4. If manual_search returns snippets, call step_by_step_formatter and part_identifier (no arguments needed; the server uses the latest retrieval), then finalize_answer.\n"
         "  5. If manual_search returns no snippets, finalize_answer with a clarifying_question that asks for diagnostic detail (sounds, smells, error codes, lights, when it started). Do NOT default to leak wording.\n"
         "  6. If the user pivots to a different symptom after an earlier safety escalation, treat it as a new turn and restart at step 1.\n"
         "  7. If the user asks what you can do, finalize_answer with a short capability summary and a clarifying_question.\n\n"
         "Rules:\n"
-        "  - Never invent citations. Citations come from manual_search results only.\n"
+        "  - Never invent citations, parts, tools, or steps. They are taken server-side from the retrieved snippets — do not echo any retrieved JSON back inside tool arguments.\n"
+        "  - Only pass natural-language fields (summary, likely_issue, clarifying_question, safety_warning) to finalize_answer.\n"
         "  - Reuse the appliance context below when the user message omits the appliance.\n"
         "  - Keep summaries concise (1-3 sentences).\n\n"
         f"Current appliance context: appliance_type={appliance_type}, brand={brand}, model={model}."
@@ -165,7 +178,7 @@ def run_react_agent_chat(
     session = store.get_session(sid) or {}
     raw_history = store.get_recent_messages(sid, limit=6)
     history = [
-        {"role": msg["role"], "content": msg["content"]}
+        _shape_history_message(msg)
         for msg in raw_history
         if msg.get("role") in {"user", "assistant"} and (msg.get("content") or "").strip()
     ]
@@ -186,7 +199,6 @@ def run_react_agent_chat(
     last_parts: list[str] = []
     last_tools: list[str] = []
     last_steps: list[str] = []
-    last_search_attempted = False
     safety_checked = False
     safety_blocked = False
     safety_warning: str | None = None
@@ -226,10 +238,44 @@ def run_react_agent_chat(
             )
         else:
             model_out = slm.chat_with_tools(messages=messages, tools=AGENT_TOOL_SCHEMAS)
+
+        llm_error = model_out.get("error")
         tool_calls = model_out.get("tool_calls") or []
         content = model_out.get("content")
+
+        if llm_error:
+            trace.append({"tool": "llm_error", "error": str(llm_error)})
+            return _error_payload(
+                turn=turn,
+                sid=sid,
+                store=store,
+                error_message=(
+                    "The local model could not complete this turn (LLM error: "
+                    f"{llm_error}). No deterministic fallback is used; please retry "
+                    "or switch to a model with reliable tool-call support."
+                ),
+                trace=trace,
+                safety_warning=safety_warning,
+                guardrail_blocked=safety_blocked,
+            )
+
         if not tool_calls:
-            break
+            trace.append({"tool": "llm_no_tool_call", "content": (content or "")[:200]})
+            return _error_payload(
+                turn=turn,
+                sid=sid,
+                store=store,
+                error_message=(
+                    "The local model returned no tool call. The ReAct loop requires a "
+                    "finalize_answer tool call to produce a response. Common causes: the "
+                    "model emitted malformed tool-call JSON (parsed and dropped by LM "
+                    "Studio), the model is too small for tool calling, or the context "
+                    "window is exhausted."
+                ),
+                trace=trace,
+                safety_warning=safety_warning,
+                guardrail_blocked=safety_blocked,
+            )
 
         messages.append(_assistant_tool_message(content, tool_calls))
         for call in tool_calls:
@@ -325,7 +371,6 @@ def run_react_agent_chat(
                         top_k=int(args.get("top_k") or turn.top_k),
                     )
                 )
-                last_search_attempted = True
                 last_snippets = out.snippets
                 trace.append(
                     {
@@ -339,7 +384,7 @@ def run_react_agent_chat(
                         ),
                     }
                 )
-                tool_content = _dump(out)
+                tool_content = _compact_search_tool_result(last_snippets)
 
             elif name == "part_identifier":
                 out = PartIdentifier().identify(
@@ -360,92 +405,35 @@ def run_react_agent_chat(
                 tool_content = _dump(out)
 
             elif name == "finalize_answer":
-                if not safety_checked:
-                    safety = SafetyProtocolChecker().check(SafetyCheckInput(user_query=turn.query))
-                    trace.append({"tool": "safety_protocol_checker", "forced": True})
-                    if not safety.allow_troubleshooting:
-                        safety_blocked = True
-                        safety_warning = safety.escalation_message
-                if last_search_attempted and not last_snippets:
-                    appliance_label = session_appliance_type or "the appliance"
-                    summary = (
-                        f"I could not find specific guidance for that {appliance_label} symptom "
-                        "in my indexed repair guides yet."
-                    )
-                    question = (
-                        f"Can you describe the {appliance_label} problem in more detail: any error codes, "
-                        "lights, sounds, smells, leaks, when it started, and anything you have already tried?"
-                    )
-                    payload = _finalize_payload(
+                live_guides = (
+                    live_ifixit_fn(query=turn.query, appliance_category=turn.appliance_category)
+                    if live_ifixit_fn
+                    else []
+                )
+                summary = args.get("summary")
+                if not isinstance(summary, str) or not summary.strip():
+                    return _error_payload(
                         turn=turn,
                         sid=sid,
-                        summary=summary,
-                        clarifying_question=question,
-                        likely_issue=None,
-                        steps=[],
-                        parts=[],
-                        tools=[],
-                        citations=[],
-                        snippets=[],
+                        store=store,
+                        error_message=(
+                            "The local model called finalize_answer without a summary. "
+                            "No deterministic summary is synthesised; please retry."
+                        ),
                         trace=trace,
                         safety_warning=safety_warning,
-                        guardrail_blocked=False,
-                        live_guides=[],
-                    )
-                    store.append_message(
-                        sid,
-                        role="assistant",
-                        content=payload.get("answer") or summary,
-                        structured=payload["structured"],
-                    )
-                    return payload
-                if last_snippets:
-                    if not last_steps:
-                        forced_steps = StepByStepGuideFormatter().format(
-                            FormatGuideInput(retrieved_snippets=last_snippets, max_steps=8)
-                        )
-                        last_steps = [step.instruction for step in forced_steps.steps]
-                        trace.append(
-                            {
-                                "tool": "step_by_step_formatter",
-                                "forced": True,
-                                "steps": len(last_steps),
-                            }
-                        )
-                    if not last_parts and not last_tools:
-                        forced_parts = PartIdentifier().identify(
-                            PartIdentifyInput(retrieved_snippets=last_snippets)
-                        )
-                        last_parts = [part.name for part in forced_parts.parts]
-                        last_tools = forced_parts.tools_required
-                        trace.append(
-                            {
-                                "tool": "part_identifier",
-                                "forced": True,
-                                "parts_found": len(last_parts),
-                            }
-                        )
-                live_guides = live_ifixit_fn(query=turn.query, appliance_category=turn.appliance_category) if live_ifixit_fn else []
-                likely_issue = args.get("likely_issue")
-                if last_snippets and not likely_issue:
-                    likely_issue = last_snippets[0].metadata.get("guide_title")
-                summary = args.get("summary")
-                if last_snippets and _looks_like_echo(summary, turn.query):
-                    summary = _summary_from_context(
-                        appliance_type=session_appliance_type,
-                        likely_issue=likely_issue,
-                        steps=last_steps,
+                        guardrail_blocked=safety_blocked,
                     )
                 payload = _finalize_payload(
                     turn=turn,
                     sid=sid,
                     summary=summary,
                     clarifying_question=args.get("clarifying_question"),
-                    likely_issue=likely_issue,
-                    steps=last_steps or args.get("steps") or [],
-                    parts=last_parts or args.get("parts_to_inspect") or [],
-                    tools=last_tools or extract_required_tools(last_snippets) or args.get("tools_required") or [],
-                    citations=_citations(last_snippets) if last_snippets else args.get("citations") or [],
+                    likely_issue=args.get("likely_issue"),
+                    steps=last_steps,
+                    parts=last_parts,
+                    tools=last_tools or extract_required_tools(last_snippets),
+                    citations=_citations(last_snippets),
                     snippets=_snippets_payload(last_snippets),
                     trace=trace,
                     safety_warning=args.get("safety_warning") or safety_warning,
@@ -472,122 +460,17 @@ def run_react_agent_chat(
                 }
             )
 
-    if last_search_attempted and not last_snippets:
-        appliance_label = session_appliance_type or "the appliance"
-        summary = (
-            f"I could not find specific guidance for that {appliance_label} symptom "
-            "in my indexed repair guides yet."
-        )
-        question = (
-            f"Can you describe the {appliance_label} problem in more detail: any error codes, "
-            "lights, sounds, smells, leaks, when it started, and anything you have already tried?"
-        )
-        payload = _finalize_payload(
-            turn=turn,
-            sid=sid,
-            summary=summary,
-            clarifying_question=question,
-            likely_issue=None,
-            steps=[],
-            parts=[],
-            tools=[],
-            citations=[],
-            snippets=[],
-            trace=trace,
-            safety_warning=safety_warning,
-            guardrail_blocked=False,
-            live_guides=[],
-        )
-        store.append_message(
-            sid,
-            role="assistant",
-            content=payload.get("answer") or summary,
-            structured=payload["structured"],
-        )
-        return payload
-
-    if last_snippets:
-        if not last_steps:
-            forced_steps = StepByStepGuideFormatter().format(
-                FormatGuideInput(retrieved_snippets=last_snippets, max_steps=8)
-            )
-            last_steps = [step.instruction for step in forced_steps.steps]
-            trace.append(
-                {
-                    "tool": "step_by_step_formatter",
-                    "forced": True,
-                    "steps": len(last_steps),
-                }
-            )
-        if not last_parts and not last_tools:
-            forced_parts = PartIdentifier().identify(
-                PartIdentifyInput(retrieved_snippets=last_snippets)
-            )
-            last_parts = [part.name for part in forced_parts.parts]
-            last_tools = forced_parts.tools_required
-            trace.append(
-                {
-                    "tool": "part_identifier",
-                    "forced": True,
-                    "parts_found": len(last_parts),
-                }
-            )
-        likely_issue = last_snippets[0].metadata.get("guide_title") if last_snippets else None
-        summary = _summary_from_context(
-            appliance_type=session_appliance_type,
-            likely_issue=likely_issue,
-            steps=last_steps,
-        )
-        payload = _finalize_payload(
-            turn=turn,
-            sid=sid,
-            summary=summary,
-            clarifying_question=None,
-            likely_issue=likely_issue,
-            steps=last_steps,
-            parts=last_parts,
-            tools=last_tools or extract_required_tools(last_snippets),
-            citations=_citations(last_snippets),
-            snippets=_snippets_payload(last_snippets),
-            trace=trace,
-            safety_warning=safety_warning,
-            guardrail_blocked=False,
-            live_guides=[],
-        )
-        store.append_message(
-            sid,
-            role="assistant",
-            content=payload.get("answer") or summary,
-            structured=payload["structured"],
-        )
-        return payload
-
-    fallback_query = turn.query
-    if session_appliance_type and session_appliance_type.lower() not in fallback_query.lower():
-        fallback_query = f"{session_appliance_type}: {turn.query}"
-    fallback_turn = ChatTurnInput(
-        query=fallback_query,
-        appliance_category=turn.appliance_category,
-        appliance_type=session_appliance_type,
-        brand=turn.brand,
-        model=turn.model,
-        top_k=turn.top_k,
-        session_id=sid,
-        strategy_label=turn.strategy_label,
-    )
-    return run_agent_chat(
-        fallback_turn,
-        retrieve_fn=retrieve_fn,
-        slm_generate=lambda query, chunks, live_guides: slm.generate_answer(
-            query,
-            chunks,
-            live_guides,
-            model_name=slm_model_name,
-        ),
-        live_ifixit_fn=live_ifixit_fn,
-        provider_name="lmstudio",
+    return _error_payload(
+        turn=turn,
+        sid=sid,
         store=store,
-        skip_user_append=True,
+        error_message=(
+            "The ReAct loop hit the maximum step budget without the model calling "
+            "finalize_answer. No deterministic fallback is used."
+        ),
+        trace=trace,
+        safety_warning=safety_warning,
+        guardrail_blocked=safety_blocked,
     )
 
 
@@ -620,7 +503,7 @@ def _finalize_payload(
     )
     answer = summary
     if clarifying_question:
-        answer = f"{summary or 'More detail is needed.'}\n\n{clarifying_question}"
+        answer = f"{summary or ''}\n\n{clarifying_question}".strip()
     return {
         "query": turn.query,
         "session_id": sid,
@@ -637,3 +520,49 @@ def _finalize_payload(
         "retrieval_count": len(snippets),
         "agent_mode": "react",
     }
+
+
+def _error_payload(
+    *,
+    turn: ChatTurnInput,
+    sid: str,
+    store: ChatStore,
+    error_message: str,
+    trace: list[dict[str, Any]],
+    safety_warning: str | None,
+    guardrail_blocked: bool,
+) -> dict[str, Any]:
+    structured = StructuredChatPayload(
+        answer_summary=None,
+        clarifying_question=None,
+        likely_issue=None,
+        steps=[],
+        parts_list=[],
+        tools_required=[],
+        retrieved_guide_snippets=[],
+        tool_trace=trace,
+    )
+    payload = {
+        "query": turn.query,
+        "session_id": sid,
+        "strategy": turn.strategy_label,
+        "guardrail_blocked": guardrail_blocked,
+        "safety_warning": safety_warning,
+        "message": error_message,
+        "structured": structured.model_dump(),
+        "answer": None,
+        "citations": [],
+        "live_ifixit_guides": [],
+        "live_ifixit_used": False,
+        "slm_provider": "lmstudio",
+        "retrieval_count": 0,
+        "agent_mode": "react",
+        "error": error_message,
+    }
+    store.append_message(
+        sid,
+        role="assistant",
+        content=error_message,
+        structured=payload["structured"],
+    )
+    return payload

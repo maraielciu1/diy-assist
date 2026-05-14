@@ -71,30 +71,17 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "part_identifier",
-            "description": "Identify likely appliance parts mentioned in retrieved snippets.",
-            "parameters": _object_schema(
-                {
-                    "retrieved_snippets": {
-                        "type": "array",
-                        "description": "Retrieved snippets from manual_search. Leave empty to use the last search result.",
-                        "items": {"type": "object"},
-                    }
-                },
-            ),
+            "description": "Identify likely appliance parts from the last manual_search result. Pass no arguments; the server uses the most recent retrieval.",
+            "parameters": _object_schema({}),
         },
     },
     {
         "type": "function",
         "function": {
             "name": "step_by_step_formatter",
-            "description": "Format retrieved guide snippets into ordered repair steps.",
+            "description": "Format the last manual_search result into ordered repair steps. The server uses the most recent retrieval; only optionally cap the number of steps.",
             "parameters": _object_schema(
                 {
-                    "retrieved_snippets": {
-                        "type": "array",
-                        "description": "Retrieved snippets from manual_search. Leave empty to use the last search result.",
-                        "items": {"type": "object"},
-                    },
                     "max_steps": {"type": "integer", "minimum": 1, "maximum": 20},
                 },
             ),
@@ -104,19 +91,19 @@ AGENT_TOOL_SCHEMAS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "finalize_answer",
-            "description": "Return the final structured answer for the UI. Call this only after safety and retrieval/clarification are complete.",
+            "description": (
+                "Return the final structured answer for the UI. Call this exactly once at the end. "
+                "Only author the natural-language fields; steps, parts, tools, and citations are taken "
+                "server-side from prior tool calls and retrieved snippets — do not pass them here."
+            ),
             "parameters": _object_schema(
                 {
-                    "summary": {"type": ["string", "null"]},
+                    "summary": {"type": "string"},
                     "likely_issue": {"type": ["string", "null"]},
                     "clarifying_question": {"type": ["string", "null"]},
-                    "steps": {"type": "array", "items": {"type": "string"}},
-                    "parts_to_inspect": {"type": "array", "items": {"type": "string"}},
-                    "tools_required": {"type": "array", "items": {"type": "string"}},
                     "safety_warning": {"type": ["string", "null"]},
-                    "citations": {"type": "array", "items": {"type": "object"}},
                 },
-                ["summary", "steps", "parts_to_inspect", "tools_required", "citations"],
+                ["summary"],
             ),
         },
     },

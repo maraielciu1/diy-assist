@@ -94,7 +94,7 @@ class SLMWrapper:
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
-        tool_choice: str | dict[str, Any] = "auto",
+        tool_choice: str | dict[str, Any] = "required",
         model_name: str | None = None,
     ) -> dict[str, Any]:
         url = f"{_lmstudio_base()}/chat/completions"
